@@ -2,7 +2,20 @@ import { NextRequest } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
 import { hashAPIKey } from './crypto'
 
-export async function authenticateRequest(req: NextRequest) {
+export interface AuthUser {
+  id: string
+  email?: string
+  role: string
+  permissions: string[]
+}
+
+export interface AuthResult {
+  user?: AuthUser
+  error?: string
+  status?: number
+}
+
+export async function authenticateRequest(req: NextRequest): Promise<AuthResult> {
   const apiKey = req.headers.get('x-api-key') || req.nextUrl.searchParams.get('api_key')
   
   if (!apiKey) {

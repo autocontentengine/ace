@@ -5,13 +5,12 @@ import { authenticateRequest } from '@/lib/auth/middleware'
 
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req)
-  if (auth.error) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
-  }
-
-  // Aggiungiamo controllo per TypeScript
-  if (!auth.user) {
-    return NextResponse.json({ error: 'User not found in auth' }, { status: 401 })
+  
+  if (auth.error || !auth.user) {
+    return NextResponse.json(
+      { error: auth.error || 'Authentication failed' }, 
+      { status: auth.status || 401 }
+    )
   }
 
   const { data, error } = await supabase
@@ -28,13 +27,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const auth = await authenticateRequest(req)
-  if (auth.error) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
-  }
-
-  // Aggiungiamo controllo per TypeScript
-  if (!auth.user) {
-    return NextResponse.json({ error: 'User not found in auth' }, { status: 401 })
+  
+  if (auth.error || !auth.user) {
+    return NextResponse.json(
+      { error: auth.error || 'Authentication failed' }, 
+      { status: auth.status || 401 }
+    )
   }
 
   const { role = 'user', permissions = [] } = await req.json()

@@ -9,6 +9,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
+  // Aggiungiamo controllo per TypeScript
+  if (!auth.user) {
+    return NextResponse.json({ error: 'User not found in auth' }, { status: 401 })
+  }
+
   const { data, error } = await supabase
     .from('api_keys')
     .select('id, role, permissions, created_at')
@@ -25,6 +30,11 @@ export async function POST(req: NextRequest) {
   const auth = await authenticateRequest(req)
   if (auth.error) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
+  // Aggiungiamo controllo per TypeScript
+  if (!auth.user) {
+    return NextResponse.json({ error: 'User not found in auth' }, { status: 401 })
   }
 
   const { role = 'user', permissions = [] } = await req.json()
@@ -47,10 +57,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to create API key' }, { status: 500 })
   }
 
-  return NextResponse.json({ 
-    apiKey, 
-    id: data.id, 
-    role: data.role, 
-    permissions: data.permissions 
+  return NextResponse.json({
+    apiKey,
+    id: data.id,
+    role: data.role,
+    permissions: data.permissions
   })
 }

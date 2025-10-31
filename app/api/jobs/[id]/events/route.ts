@@ -4,19 +4,18 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params; // Aspetta i parametri
-  const jobId = id;
+  const { id } = await params
+  const jobId = id
 
-  const encoder = new TextEncoder();
+  const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
-      // Simuliamo progresso per testing
       const stages = [
         { stage: 'analyzing_brief', progress: 20 },
         { stage: 'generating_copy', progress: 40 },
         { stage: 'creating_carousel', progress: 70 },
         { stage: 'finalizing', progress: 100 }
-      ];
+      ]
 
       for (const update of stages) {
         const event = {
@@ -25,14 +24,13 @@ export async function GET(
           progress: update.progress,
           stage: update.stage,
           timestamp: new Date().toISOString()
-        };
+        }
 
         controller.enqueue(
           encoder.encode(`event: progress\ndata: ${JSON.stringify(event)}\n\n`)
-        );
+        )
         
-        // Attendi 1 secondo tra gli update
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1000))
       }
 
       controller.enqueue(
@@ -42,11 +40,11 @@ export async function GET(
           progress: 100,
           timestamp: new Date().toISOString()
         })}\n\n`)
-      );
+      )
       
-      controller.close();
+      controller.close()
     }
-  });
+  })
 
   return new Response(stream, {
     headers: {
@@ -54,5 +52,5 @@ export async function GET(
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
     },
-  });
+  })
 }

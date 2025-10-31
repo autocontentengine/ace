@@ -6,7 +6,7 @@ export async function rateLimitMiddleware(
   userId: string,
   endpoint: string
 ) {
-  const tier = 'free' // Per ora tutti free, poi basato su user tier
+  const tier = 'free'
   const result = await checkRateLimit(userId, endpoint, tier)
   
   if (!result.allowed) {

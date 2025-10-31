@@ -35,10 +35,15 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult>
       return { error: 'Invalid API key', status: 401 }
     }
 
+    // CORREZIONE: users è un array, prendiamo il primo elemento
+    const userEmail = Array.isArray(data.users) && data.users.length > 0 
+      ? data.users[0]?.email 
+      : undefined
+
     return {
       user: {
         id: data.user_id,
-        email: data.users?.email,
+        email: userEmail,
         role: data.role,
         permissions: data.permissions || []
       }

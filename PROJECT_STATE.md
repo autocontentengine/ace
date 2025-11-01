@@ -2,44 +2,39 @@
 
 ## Ì≥ä Status
 **Data Inizio:** 31 Ottobre 2025
-**Fase Attuale:** Day 0 - COMPLETATO ‚úÖ
+**Fase Attuale:** Week 1 - COMPLETATA ‚úÖ  
 **Budget:** ‚Ç¨0/20 speso
-**Ultimo Commit:** b280701 - feat: Day0 complete - health route, dependencies, env setup
+**Ultimo Commit:** f6c2ff0 - fix: TypeScript errors for Next.js 16 compatibility
+**Deploy URL:** https://ace-six-gules.vercel.app
 
-## ‚úÖ Completato Oggi (Day 0)
-- [x] Prerequisiti verificati e configurati
-- [x] Git configurato correttamente
-- [x] Repository GitHub creata e sincronizzata
-- [x] Progetto Supabase creato e configurato
-- [x] Progetto Next.js inizializzato con Turbopack + Tailwind
-- [x] Environment variables configurate
-- [x] Health route creata e testata
-- [x] Schema DB completo applicato su Supabase
+## ‚úÖ Completato (Day 0 + Week 1)
+- [x] Prerequisiti tool e account
+- [x] Repository GitHub e Supabase
+- [x] Next.js 16 + TypeScript + Tailwind + Turbopack
+- [x] Schema DB completo (15 tabelle)
+- [x] Health route funzionante
 - [x] Dependencies core installate
-- [x] Primo commit e push completati
+- [x] Auth/RBAC system con API key hashing
+- [x] Rate limiting adattivo
+- [x] SSE Progress per jobs
+- [x] Cache semantica light
+- [x] Referral system base
+- [x] Deploy Vercel funzionante
 
-## ‚ö†Ô∏è Warning Attesi
-- **RLS warnings su Supabase**: Normali, saranno risolti in Week 1 con auth
-- **Lockfile warnings**: Non critici, gestiti da pnpm
+## ÌæØ Prossimi Task (Week 2 - 10-16 Nov)
+1. `/api/generate/copy` - Integrazione Groq API reale
+2. `/api/carousel` - React‚ÜíSatori‚ÜíPNG/PDF
+3. Batch generate + retry/backoff
+4. Analytics base (business_metrics, asset_analytics)
+5. Upsell system (soglia 80% free ‚Üí upgrade)
 
-## ÌæØ Prossimi Task (Week 1 - 3-9 Nov)
-1. **Auth/RBAC** - hashing API key (SHA-256), ruoli user/admin/editor
-2. **Rate limit adattivo** - per endpoint/utente/tier
-3. **SSE progress** su `/api/jobs/{id}/events`
-4. **Cache semantica "light"** - normalizzazione testo + Redis key
-5. **Referral system** base - parametro referral in URL
+## Ì¥ß Ambiente Sviluppo
+- **Cartella:** ~/ace
+- **Node:** 20+
+- **Package manager:** pnpm
+- **Server locale:** pnpm dev (port 3000)
 
-## Ì¥ë Credenziali Configurate
-- **Supabase URL:** https://tviotogxrdjhkrrfwxgq.supabase.co
-- **Git Remote:** https://github.com/autocontentengine/ace
-- **Groq API:** Configurata e pronta
-- **Local Dev:** http://localhost:3000
-
-## Ì≥à Metriche Day 0
-- **Tempo setup:** ~30 minuti
-- **Costo:** ‚Ç¨0
-- **Build Status:** ‚úÖ Success
-- **Health Check:** ‚úÖ Functional
-
-## Ì∫Ä Ready for Week 1
-Il progetto √® pronto per iniziare lo sviluppo delle funzionalit√† core!
+## Ì≥û Link Utili
+- **Repository:** https://github.com/autocontentengine/ace
+- **Deploy:** https://ace-six-gules.vercel.app
+- **Database:** https://tviotogxrdjhkrrfwxgq.supabase.co

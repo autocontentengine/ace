@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# íº€ ACE - Automated Content Engine
 
-## Getting Started
+Automated content generation from brief to publishable assets (copy + carousel/pack) in < 10 min.
 
-First, run the development server:
+## í·ºï¸ Roadmap Completa
+
+### í¾¯ North Star & Vincoli
+**Obiettivo**: da brief a asset pubblicabile in < 10 min, qualitÃ  â‰¥ 8/10, costo â‰¤ â‚¬0,05/asset.
+
+**Budget iniziale**: â‚¬20 (cap assoluto finchÃ© non arriva revenue).
+
+### í³… Timeline - Day 0 â†’ Week 8
+
+#### âœ… **Day 0 - Ven 31 Ott 2025** - COMPLETATO
+- Setup baseline, cap â‚¬20 attivo, schema base applicato
+
+#### âœ… **Week 1 - 3-9 Nov 2025** - COMPLETATO
+- Foundation: sicurezza, rate limit, audit, SSE progress, cache light, referral light
+
+#### íº€ **Week 2 - 10-16 Nov 2025** - IN CORSO
+- MVP Core: generare asset reali end-to-end
+- `/api/generate/copy`, `/api/carousel`, batch generate, analytics, upsell
+
+#### í´„ **Week 3 - 17-23 Nov 2025** - PROSSIMO
+- Prodotti & Media: Prompt Pack ZIP, Guide PDF, TTS+SRT+merge, Affiliate 30%
+
+#### í³ˆ **Week 4 - 24-30 Nov 2025**
+- QualitÃ  & Go-Live: export avanzati, test, landing, checkout, go-live MVP
+
+#### í¿¢ **Week 5 - 1-7 Dic 2025**
+- Enterprise P0: API v2, circuit breaker, cost breakdown
+
+#### âš™ï¸ **Week 6 - 8-14 Dic 2025**
+- Strategiche P1: feature flags, migrazioni, pre-warm template, TTS premium
+
+#### í´ **Week 7 - 15-21 Dic 2025**
+- Security & Ops: CSP hardening, BI dashboard, feedback loop, runbook
+
+#### í¾¯ **Week 8 - 22-28 Dic 2025**
+- Handover & Closure: load testing, documentazione, formazione, hypercare
+
+## í» ï¸ Stack Tecnologico
+- **Frontend**: Next.js 16, React, TypeScript, Tailwind
+- **Backend**: Next.js API Routes, Supabase (DB/Auth)
+- **Deploy**: Vercel
+- **AI/ML**: Groq API, LLM integration
+- **Media**: Satori, @vercel/og, resvg, React PDF
+
+## íº€ Getting Started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+# Sviluppo locale
 pnpm dev
-# or
-bun dev
+
+# Build produzione
+pnpm build
+
+# Avvia produzione
+pnpm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## í´— Link Utili
+- **Repository**: https://github.com/autocontentengine/ace
+- **Deploy**: https://ace-six-gules.vercel.app
+- **Supabase**: https://tviotogxrdjhkrrfwxgq.supabase.co

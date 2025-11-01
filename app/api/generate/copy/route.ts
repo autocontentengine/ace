@@ -12,13 +12,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { brief, style, targetAudience } = GenerateCopySchema.parse(body);
     
-    // Mock implementation - will replace with Groq
-    const generatedCopy = await generateCopyWithGroq(brief, style, targetAudience);
+    // Mock per ora - sistemeremo Groq dopo
+    const generatedCopy = generateMockCopy(brief, style, targetAudience);
     
     return NextResponse.json({ 
       success: true, 
       copy: generatedCopy,
-      quality_score: 8.2
+      quality_score: 7.5
     });
   } catch (error) {
     console.error('Copy generation error:', error);
@@ -26,14 +26,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function generateCopyWithGroq(brief: string, style: string, audience: string): Promise<string> {
-  // Placeholder - will implement Groq API call
-  return `Generated copy for: "${brief}" 
-Style: ${style}
-Audience: ${audience}
+function generateMockCopy(brief: string, style: string, audience: string): string {
+  return `[HEADLINE] Copy for: ${brief}
 
-[Headline] Transform Your Content Strategy
-[Body] This is AI-generated marketing copy based on your brief. The full Groq API integration will be implemented in the next step.
+[COPY] This is mock content for ${brief} with ${style} style targeting ${audience}.
 
-[CTA] Start creating high-converting content today!`;
+[CTA] Contact us for more information!`;
 }

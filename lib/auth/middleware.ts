@@ -1,54 +1,47 @@
-import { NextRequest } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
-import { hashAPIKey } from './crypto'
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { sha256 } from 'crypto-hash';
 
-export interface AuthUser {
-  id: string
-  email?: string
-  role: string
-  permissions: string[]
-}
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
 
-export interface AuthResult {
-  user?: AuthUser
-  error?: string
-  status?: number
-}
+export async function authenticateRequest(request: NextRequest) {
+  const apiKey = request.headers.get('x-api-key');
 
-export async function authenticateRequest(req: NextRequest): Promise<AuthResult> {
-  const apiKey = req.headers.get('x-api-key') || req.nextUrl.searchParams.get('api_key')
-  
   if (!apiKey) {
-    return { error: 'API key required', status: 401 }
+    return NextResponse.json({ error: 'API key missing' }, { status: 401 });
   }
 
   try {
-    const keyHash = hashAPIKey(apiKey)
+    const keyHash = await sha256(apiKey);
     
-    const { data, error } = await supabase
+    const { data: keyData, error: keyError } = await supabase
       .from('api_keys')
-      .select('user_id, role, permissions, users(email)')
+      .select('user_id, role, permissions')
       .eq('key_hash', keyHash)
-      .single()
+      .single();
 
-    if (error || !data) {
-      return { error: 'Invalid API key', status: 401 }
+    if (keyError || !keyData) {
+      return NextResponse.json({ error: 'Invalid API key' }, { status: 401 });
     }
 
-    // CORREZIONE: users è un array, prendiamo il primo elemento
-    const userEmail = Array.isArray(data.users) && data.users.length > 0 
-      ? data.users[0]?.email 
-      : undefined
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-user-id', keyData.user_id);
+    requestHeaders.set('x-user-role', keyData.role);
+    requestHeaders.set('x-user-permissions', JSON.stringify(keyData.permissions));
 
-    return {
-      user: {
-        id: data.user_id,
-        email: userEmail,
-        role: data.role,
-        permissions: data.permissions || []
-      }
-    }
-  } catch (error) {
-    return { error: 'Authentication failed', status: 500 }
+    return NextResponse.next({
+      request: {
+        headers: requestHeaders,
+      },
+    });
+  } catch (err) {
+    console.error('Auth middleware error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+// Export alias per compatibilità
+export const authMiddleware = authenticateRequest;

@@ -20,6 +20,9 @@ importers:
       '@vercel/og':
         specifier: ^0.8.5
         version: 0.8.5
+      crypto-hash:
+        specifier: ^4.0.0
+        version: 4.0.0
       next:
         specifier: 16.0.1
         version: 16.0.1(@babel/core@7.28.5)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
@@ -1019,6 +1022,10 @@ packages:
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
+
+  crypto-hash@4.0.0:
+    resolution: {integrity: sha512-KkkFriWj2teXIJOmftIRavBL4q8A7EZV24Nn9sWhIR4hdeS8u+q2A2p0tWZ1m4xVoP1zs3VJjVwwAUnztBb8uw==}
+    engines: {node: '>=20'}
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
@@ -3291,6 +3298,8 @@ snapshots:
       path-key: 3.1.1
       shebang-command: 2.0.0
       which: 2.0.2
+
+  crypto-hash@4.0.0: {}
 
   crypto-js@4.2.0: {}
 

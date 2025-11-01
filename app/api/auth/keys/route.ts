@@ -1,64 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
-import { generateAPIKey, hashAPIKey } from '@/lib/auth/crypto'
+import { generateAPIKey } from '@/lib/auth/crypto'
 import { authenticateRequest } from '@/lib/auth/middleware'
 
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req)
   
-  if (auth.error || !auth.user) {
-    return NextResponse.json(
-      { error: auth.error || 'Authentication failed' }, 
-      { status: auth.status || 401 }
-    )
+  if (auth.status !== 200) {
+    return auth
   }
 
-  const { data, error } = await supabase
-    .from('api_keys')
-    .select('id, role, permissions, created_at')
-    .eq('user_id', auth.user.id)
+  try {
+    const userId = auth.headers.get('x-user-id')
+    
+    const { data: keys, error } = await supabase
+      .from('api_keys')
+      .select('id, key_hash, role, created_at')
+      .eq('user_id', userId)
 
-  if (error) {
-    return NextResponse.json({ error: 'Database error' }, { status: 500 })
+    if (error) {
+      return NextResponse.json({ error: 'Failed to fetch API keys' }, { status: 500 })
+    }
+
+    return NextResponse.json({ keys })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-
-  return NextResponse.json({ keys: data })
 }
 
 export async function POST(req: NextRequest) {
   const auth = await authenticateRequest(req)
   
-  if (auth.error || !auth.user) {
-    return NextResponse.json(
-      { error: auth.error || 'Authentication failed' }, 
-      { status: auth.status || 401 }
-    )
+  if (auth.status !== 200) {
+    return auth
   }
 
-  const { role = 'user', permissions = [] } = await req.json()
+  try {
+    const userId = auth.headers.get('x-user-id')
+    const { permissions = [] } = await req.json()
 
-  const apiKey = generateAPIKey()
-  const keyHash = hashAPIKey(apiKey)
+    const { apiKey, hashedKey } = await generateAPIKey()
+    
+    const { data, error } = await supabase
+      .from('api_keys')
+      .insert({
+        user_id: userId,
+        key_hash: hashedKey,
+        role: 'user',
+        permissions
+      })
+      .select()
+      .single()
 
-  const { data, error } = await supabase
-    .from('api_keys')
-    .insert({
-      user_id: auth.user.id,
-      key_hash: keyHash,
-      role,
-      permissions
+    if (error) {
+      return NextResponse.json({ error: 'Failed to create API key' }, { status: 500 })
+    }
+
+    return NextResponse.json({ 
+      apiKey,
+      id: data.id,
+      permissions: data.permissions 
     })
-    .select()
-    .single()
-
-  if (error) {
-    return NextResponse.json({ error: 'Failed to create API key' }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-
-  return NextResponse.json({
-    apiKey,
-    id: data.id,
-    role: data.role,
-    permissions: data.permissions
-  })
 }

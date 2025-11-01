@@ -1,27 +1,43 @@
-import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
+
+export async function cacheLookup(key: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('semantic_cache')
+    .select('value')
+    .eq('key', key)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Cache lookup error:', error);
+    return null;
+  }
+
+  return data?.value || null;
+}
+
+export async function cacheStore(key: string, val: string, ttl: number = 604800): Promise<void> {
+  const { error } = await supabase
+    .from('semantic_cache')
+    .upsert({
+      key,
+      value: val,
+      expires_at: new Date(Date.now() + ttl * 1000).toISOString(),
+    });
+
+  if (error) {
+    console.error('Cache store error:', error);
+  }
+}
 
 export function normalizeBrief(brief: string): string {
   return brief
     .toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 500)
-}
-
-export async function cacheLookup(normalizedBrief: string) {
-  // Per ora usiamo Supabase come cache semplice
-  const { data } = await supabase
-    .from('jobs')
-    .select('id, payload_json, created_at')
-    .ilike('payload_json->>brief', `%${normalizedBrief}%`)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    
-  return data && data.length > 0 ? data[0] : null
-}
-
-export async function cacheStore(normalizedBrief: string, result: any) {
-  // Per ora solo log, implementeremo cache vera più tardi
-  console.log('Cache would store:', normalizedBrief, result)
+    .slice(0, 500);
 }

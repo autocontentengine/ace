@@ -5,11 +5,27 @@ const CarouselRequestSchema = z.object({
   slides: z.array(z.object({
     headline: z.string(),
     description: z.string(),
-    backgroundColor: z.string().optional().default('#ffffff'),
-    textColor: z.string().optional().default('#000000'),
+    backgroundColor: z.string().optional().default('#3b82f6'),
+    textColor: z.string().optional().default('#ffffff'),
   })),
   format: z.enum(['png', 'pdf']).default('png'),
 });
+
+interface Slide {
+  headline: string;
+  description: string;
+  backgroundColor: string;
+  textColor: string;
+}
+
+interface CarouselAsset {
+  slide: number;
+  url: string;
+  content: Slide;
+  format: string;
+  status: string;
+  dimensions: { width: number; height: number };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,12 +44,14 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function generateCarousel(slides: any[], format: string) {
-  // Mock implementation - will replace with actual image generation
+async function generateCarousel(slides: Slide[], format: string): Promise<CarouselAsset[]> {
+  // Per ora manteniamo il mock, implementeremo Satori nel prossimo step
   return slides.map((slide, index) => ({
     slide: index + 1,
-    url: `mock://generated/slide-${index + 1}.${format}`,
+    url: `https://via.placeholder.com/1200x630/${slide.backgroundColor.replace('#', '')}/${slide.textColor.replace('#', '')}?text=${encodeURIComponent(slide.headline)}`,
     content: slide,
-    status: 'generated_mock'
+    format: format,
+    status: 'generated_placeholder',
+    dimensions: { width: 1200, height: 630 }
   }));
 }

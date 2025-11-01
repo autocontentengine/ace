@@ -1,15 +1,17 @@
-import { createHash, randomBytes } from 'crypto'
+import { sha256 } from 'crypto-hash';
 
-export function hashAPIKey(apiKey: string): string {
-  return createHash('sha256').update(apiKey).digest('hex')
+export async function generateAPIKey(): Promise<{ apiKey: string; hashedKey: string }> {
+  // Genera una API key casuale
+  const apiKey = 'ace_' + Array.from(crypto.getRandomValues(new Uint8Array(32)))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  // Hash della API key per storage sicuro
+  const hashedKey = await sha256(apiKey);
+  
+  return { apiKey, hashedKey };
 }
 
-export function generateAPIKey(): string {
-  const randomPart = randomBytes(16).toString('hex')
-  const timestamp = Date.now().toString(36)
-  return `ace_${timestamp}_${randomPart}`
-}
-
-export function validateAPIKeyFormat(apiKey: string): boolean {
-  return /^ace_[a-z0-9]+_[a-f0-9]{32}$/i.test(apiKey)
+export async function hashAPIKey(apiKey: string): Promise<string> {
+  return await sha256(apiKey);
 }

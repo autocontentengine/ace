@@ -4,55 +4,75 @@ import { authenticateRequest } from '@/lib/auth/middleware'
 import { rateLimitMiddleware } from '@/lib/rate-limit/middleware'
 
 export async function POST(req: NextRequest) {
-  const auth = await authenticateRequest(req)
-  if (auth.error || !auth.user) {
-    return NextResponse.json(
-      { error: auth.error || 'Authentication failed' }, 
-      { status: auth.status || 401 }
-    )
+  // Applica rate limiting
+  const rateLimit = await rateLimitMiddleware(req)
+  if (rateLimit.status !== 200) {
+    return rateLimit
   }
 
-  const rateLimit = await rateLimitMiddleware(req, auth.user.id, 'jobs-create')
-  if (rateLimit.error) {
-    return NextResponse.json(
-      { error: rateLimit.error }, 
-      { 
-        status: rateLimit.status, 
-        headers: new Headers(rateLimit.headers as Record<string, string>) 
-      }
-    )
+  // Autenticazione
+  const auth = await authenticateRequest(req)
+  if (auth.status !== 200) {
+    return auth
   }
 
   try {
+    const userId = auth.headers.get('x-user-id')
     const { type, payload } = await req.json()
 
+    // Inserisci il job nel database
     const { data: job, error } = await supabase
       .from('jobs')
       .insert({
-        project_id: auth.user.id,
+        project_id: userId,
         type,
         payload_json: payload,
-        status: 'queued',
-        progress: 0
+        status: 'queued'
       })
       .select()
       .single()
 
     if (error) {
-      console.error('Database error:', error)
+      console.error('Job creation error:', error)
       return NextResponse.json({ error: 'Failed to create job' }, { status: 500 })
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       jobId: job.id,
       status: job.status,
       progress: job.progress,
       eventsUrl: `/api/jobs/${job.id}/events`
-    }, { 
-      headers: new Headers(rateLimit.headers as Record<string, string>) 
     })
-  } catch (error) {
-    console.error('Request parsing error:', error)
-    return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 })
+  } catch {
+    console.error('Jobs route error')
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function GET(req: NextRequest) {
+  const auth = await authenticateRequest(req)
+  if (auth.status !== 200) {
+    return auth
+  }
+
+  try {
+    const userId = auth.headers.get('x-user-id')
+    const { searchParams } = new URL(req.url)
+    const limit = parseInt(searchParams.get('limit') || '10')
+
+    const { data: jobs, error } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('project_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      return NextResponse.json({ error: 'Failed to fetch jobs' }, { status: 500 })
+    }
+
+    return NextResponse.json({ jobs })
+  } catch {
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

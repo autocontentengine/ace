@@ -1,35 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server'
 
-const GenerateCopySchema = z.object({
-  brief: z.string().min(1).max(1000),
-  style: z.string().optional().default('professional'),
-  targetAudience: z.string().optional().default('general'),
-});
-
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    const { brief, style, targetAudience } = GenerateCopySchema.parse(body);
-    
-    // Mock per ora - sistemeremo Groq dopo
-    const generatedCopy = generateMockCopy(brief, style, targetAudience);
-    
-    return NextResponse.json({ 
-      success: true, 
-      copy: generatedCopy,
-      quality_score: 7.5
-    });
+    const body = await req.json()
+    const { brief } = body
+
+    const groqApiKey = process.env.GROQ_API_KEY
+    if (!groqApiKey) {
+      return NextResponse.json({ error: 'GROQ_API_KEY non configurata' }, { status: 500 })
+    }
+
+    // Esegui chiamata all’API Groq
+    const response = await fetch('https://api.groq.com/v1/generate', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${groqApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt: brief,
+      }),
+    })
+
+    const data = await response.json()
+    return NextResponse.json({ ok: true, data })
   } catch (error) {
-    console.error('Copy generation error:', error);
-    return NextResponse.json({ error: 'Generation failed' }, { status: 500 });
+    console.error('Errore in /api/generate/copy:', error)
+    return NextResponse.json({ ok: false, error: String(error) }, { status: 500 })
   }
-}
-
-function generateMockCopy(brief: string, style: string, audience: string): string {
-  return `[HEADLINE] Copy for: ${brief}
-
-[COPY] This is mock content for ${brief} with ${style} style targeting ${audience}.
-
-[CTA] Contact us for more information!`;
 }

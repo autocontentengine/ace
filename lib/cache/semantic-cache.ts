@@ -1,43 +1,41 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-);
-
-export async function cacheLookup(key: string): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('semantic_cache')
-    .select('value')
-    .eq('key', key)
-    .maybeSingle();
-
-  if (error) {
-    console.error('Cache lookup error:', error);
-    return null;
-  }
-
-  return data?.value || null;
+// lib/cache/semantic-cache.ts
+type RedisLike = {
+  get: (key: string) => Promise<string | null>
+  set: (key: string, value: string, mode?: string, ttlSeconds?: number) => Promise<unknown>
 }
 
-export async function cacheStore(key: string, val: string, ttl: number = 604800): Promise<void> {
-  const { error } = await supabase
-    .from('semantic_cache')
-    .upsert({
-      key,
-      value: val,
-      expires_at: new Date(Date.now() + ttl * 1000).toISOString(),
-    });
+const redis: RedisLike | null = null
 
-  if (error) {
-    console.error('Cache store error:', error);
+// Esempio di inizializzazione lazy; sostituisci con Upstash o altro quando pronto
+function getRedis(): RedisLike | null {
+  if (redis) return redis
+  const url = process.env.UPSTASH_REDIS_URL
+  const token = process.env.UPSTASH_REDIS_TOKEN
+  if (!url || !token) return null
+  // Qui potresti creare il client reale (Upstash, ioredis, ecc.)
+  // Per ora ritorniamo null se non configurato
+  return null
+}
+
+export async function cacheLookup(key: string) {
+  const r = getRedis()
+  if (!r) return null
+  try {
+    return await r.get(key)
+  } catch (e) {
+    if (process.env.NODE_ENV !== 'production') console.warn('[cacheLookup] error', e)
+    return null
   }
 }
 
-export function normalizeBrief(brief: string): string {
-  return brief
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 500);
+export async function cacheStore(key: string, val: string, ttl = 60 * 60 * 24 * 7) {
+  const r = getRedis()
+  if (!r) return false
+  try {
+    await r.set(key, val, 'EX', ttl)
+    return true
+  } catch (e) {
+    if (process.env.NODE_ENV !== 'production') console.warn('[cacheStore] error', e)
+    return false
+  }
 }

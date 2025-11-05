@@ -1,56 +1,51 @@
-import { NextRequest } from 'next/server'
+// app/api/jobs/[id]/events/route.ts
+import { authenticateRequest } from '@/lib/auth/middleware'
+import type { AuthenticatedRequest } from '@/types/global'
+
+export const runtime = 'nodejs' // teniamo Node per usare 'crypto' nel middleware
 
 export async function GET(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  req: AuthenticatedRequest,
+  ctx: { params: Promise<{ id: string }> } // <-- in Next 16 è una Promise
 ) {
-  const { id } = await params
+  const authErr = await authenticateRequest(req)
+  if (authErr) return authErr
+
+  const { id } = await ctx.params // <-- unwrap Promise
   const jobId = id
-
   const encoder = new TextEncoder()
+
+  // definiamo iv/timeout in outer scope così sono visibili in cancel()
+  let iv: ReturnType<typeof setInterval> | undefined
+  let timeout: ReturnType<typeof setTimeout> | undefined
+
   const stream = new ReadableStream({
-    async start(controller) {
-      const stages = [
-        { stage: 'analyzing_brief', progress: 20 },
-        { stage: 'generating_copy', progress: 40 },
-        { stage: 'creating_carousel', progress: 70 },
-        { stage: 'finalizing', progress: 100 }
-      ]
+    start(controller) {
+      const send = (event: any) =>
+        controller.enqueue(encoder.encode(`event: update\ndata: ${JSON.stringify(event)}\n\n`))
 
-      for (const update of stages) {
-        const event = {
-          jobId,
-          status: 'running',
-          progress: update.progress,
-          stage: update.stage,
-          timestamp: new Date().toISOString()
-        }
+      // heartbeat finto per demo
+      iv = setInterval(() => send({ status: 'running', jobId, ts: Date.now() }), 2000)
 
-        controller.enqueue(
-          encoder.encode(`event: progress\ndata: ${JSON.stringify(event)}\n\n`)
-        )
-        
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      }
+      timeout = setTimeout(() => {
+        send({ status: 'done', jobId, ts: Date.now() })
+        if (iv) clearInterval(iv)
+        controller.close()
+      }, 7000)
 
-      controller.enqueue(
-        encoder.encode(`event: complete\ndata: ${JSON.stringify({
-          jobId,
-          status: 'completed',
-          progress: 100,
-          timestamp: new Date().toISOString()
-        })}\n\n`)
-      )
-      
-      controller.close()
-    }
+      controller.enqueue(encoder.encode(`event: open\ndata: {"jobId":"${jobId}"}\n\n`))
+    },
+    cancel() {
+      if (iv) clearInterval(iv)
+      if (timeout) clearTimeout(timeout)
+    },
   })
 
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
+      Connection: 'keep-alive',
     },
   })
 }

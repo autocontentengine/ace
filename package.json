@@ -2,18 +2,34 @@
   "name": "ace",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "cross-env NEXT_DISABLE_TURBOPACK=1 next dev --webpack",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
-    "test": "playwright test"
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "prepare": "husky install"
+  },
+  "lint-staged": {
+    "**/*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "**/*.{json,md,css,scss}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.1",
     "@resvg/resvg-js": "^2.6.2",
     "@supabase/supabase-js": "^2.78.0",
     "@vercel/og": "^0.8.5",
+    "nanoid": "^5.1.6",
     "next": "16.0.1",
     "pdf-lib": "^1.17.1",
     "react": "^19.2.0",
@@ -22,16 +38,22 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
-    "@playwright/test": "^1.48.2",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@playwright/test": "^1.56.1",
+    "@tailwindcss/postcss": "^4.1.16",
+    "@types/node": "^20.19.24",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@typescript-eslint/eslint-plugin": "^8.46.3",
+    "@typescript-eslint/parser": "^8.46.3",
     "cross-env": "^7.0.3",
-    "eslint": "^9",
-    "eslint-config-next": "16.0.1",
-    "playwright": "^1.48.2",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "husky": "^8.0.3",
+    "lint-staged": "^16.2.6",
+    "playwright": "^1.56.1",
+    "prettier": "^3.6.2",
+    "tailwindcss": "^4.1.16",
+    "typescript": "^5.2.2"
   }
 }

@@ -1,32 +1,37 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import crypto from 'crypto'
+import { NextResponse } from 'next/server'
+import type { AuthenticatedRequest } from '@/types/global'
+import { supabaseServer } from '@/lib/supabase'
+import { createHash } from 'crypto'
 
-function sha256(input: string): string {
-  return crypto.createHash('sha256').update(input).digest('hex')
+const supabase = supabaseServer()
+
+function sha256Hex(input: string) {
+  return createHash('sha256').update(input).digest('hex')
 }
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-)
-
-export async function middleware(req: NextRequest) {
-  const apiKey = req.headers.get('x-api-key')
+/**
+ * Autentica tramite header x-api-key.
+ * - Su OK: attacca req.user = { id, role } e ritorna null
+ * - Su KO: ritorna NextResponse con errore (401)
+ */
+export async function authenticateRequest(req: AuthenticatedRequest) {
+  const apiKey = req.headers.get('x-api-key')?.trim()
   if (!apiKey) {
     return NextResponse.json({ error: 'Missing API key' }, { status: 401 })
   }
 
-  const hashed = sha256(apiKey)
+  const keyHash = sha256Hex(apiKey)
+
   const { data, error } = await supabase
     .from('api_keys')
-    .select('*')
-    .eq('hash', hashed)
-    .maybeSingle()
+    .select('user_id, role')
+    .eq('key_hash', keyHash)
+    .single()
 
   if (error || !data) {
-    return NextResponse.json({ error: 'Invalid API key' }, { status: 403 })
+    return NextResponse.json({ error: 'Invalid API key' }, { status: 401 })
   }
 
-  return NextResponse.next()
+  ;(req as AuthenticatedRequest).user = { id: data.user_id, role: (data as any).role ?? 'user' }
+  return null
 }

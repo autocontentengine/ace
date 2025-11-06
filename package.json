@@ -13,7 +13,10 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
-    "prepare": "husky install"
+    "prepare": "husky install",
+    "problems": "pnpm -s typecheck && pnpm -s eslint . --ext .ts,.tsx,.js,.jsx",
+    "problems:report": "mkdir -p reports && pnpm -s typecheck 2>&1 | tee reports/tsc.txt && pnpm -s eslint . --ext .ts,.tsx,.js,.jsx -f codeframe 2>&1 | tee reports/eslint-codeframe.txt && pnpm -s eslint . --ext .ts,.tsx,.js,.jsx -f json -o reports/eslint.json",
+    "problems:all": "node scripts/problems-all.mjs"
   },
   "lint-staged": {
     "**/*.{ts,tsx,js,jsx}": [
@@ -48,6 +51,7 @@
     "@typescript-eslint/parser": "^8.46.3",
     "cross-env": "^7.0.3",
     "eslint": "^8.57.1",
+    "eslint-formatter-codeframe": "^7.32.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "husky": "^8.0.3",

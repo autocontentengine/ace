@@ -1,3 +1,4 @@
+// lib/auth/middleware.ts
 import { NextResponse } from 'next/server'
 import type { AuthenticatedRequest } from '@/types/global'
 import { supabaseServer } from '@/lib/supabase'
@@ -32,6 +33,7 @@ export async function authenticateRequest(req: AuthenticatedRequest) {
     return NextResponse.json({ error: 'Invalid API key' }, { status: 401 })
   }
 
-  ;(req as AuthenticatedRequest).user = { id: data.user_id, role: (data as any).role ?? 'user' }
+  const reqAuth = req as AuthenticatedRequest
+  reqAuth.user = { id: data.user_id, role: (data as any).role ?? 'user' }
   return null
 }

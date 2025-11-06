@@ -1,103 +1,66 @@
 // app/api/demo/route.ts
-export const runtime = 'nodejs'
-
 import { NextRequest, NextResponse } from 'next/server'
 
-type GroqMsg = { role: 'system' | 'user' | 'assistant'; content: string }
+export const runtime = 'nodejs'
 
-function extractJson(text: string) {
-  // prova a prendere blocco ```json ... ```
-  const fenced = text.match(/```json\s*([\s\S]*?)```/i)
-  const raw = fenced ? fenced[1] : text
-  const objMatch = raw.match(/\{[\s\S]*\}$/)
-  const candidate = objMatch ? objMatch[0] : raw
-  try {
-    return JSON.parse(candidate)
-  } catch {
-    return null
+type Body = { brief?: string; lang?: 'it' | 'en' }
+
+function rand<T>(arr: T[], n: number) {
+  const out: T[] = []
+  const copy = arr.slice()
+  while (out.length < n && copy.length) {
+    const i = Math.floor(Math.random() * copy.length)
+    out.push(copy.splice(i, 1)[0])
   }
+  return out
 }
 
-async function callGroq({ model, brief }: { model: string; brief: string }): Promise<{
-  hooks?: string[]
-  captions?: string[]
-  carousels?: { title: string; slides: string[] }[]
-  raw?: string
-}> {
-  const apiKey = process.env.GROQ_API_KEY?.trim()
-  if (!apiKey) throw new Error('Missing GROQ_API_KEY')
-
-  const messages: GroqMsg[] = [
-    {
-      role: 'system',
-      content:
-        'Sei un copywriter per social in italiano. Rispondi solo in JSON nel formato { "hooks": string[], "captions": string[], "carousels": [{ "title": string, "slides": string[] }] }. Niente testo fuori dal JSON.',
-    },
-    {
-      role: 'user',
-      content: `Brief: ${brief}\nGenera 3 hook brevi, 3 caption concise, 1 carosello con 5 slide.`,
-    },
+function demoGenerate(brief: string, lang: 'it' | 'en') {
+  const hooks_it = [
+    'Semplice. Chiaro. Efficace.',
+    'Dai voce al tuo brand.',
+    'Less is more (davvero).',
+    'Ogni post, un’idea concreta.',
+    'Contenuti che convertono.',
+    'Dettagli che fanno la differenza.',
+  ]
+  const hooks_en = [
+    'Simple. Clear. Effective.',
+    'Give your brand a voice.',
+    'Less is more (really).',
+    'Every post, a concrete idea.',
+    'Content that converts.',
+    'Details that make the difference.',
+  ]
+  const caps_it = [
+    `Brief: ${brief}. Tono naturale, beneficio al centro, call to action chiara.`,
+    'Sii breve: un gancio forte e un invito concreto.',
+    'Sperimenta: misura cosa funziona e replica.',
+    'Parla come il tuo pubblico, non come un manuale.',
+  ]
+  const caps_en = [
+    `Brief: ${brief}. Natural tone, benefit upfront, clear call to action.`,
+    'Keep it short: strong hook and concrete ask.',
+    'Experiment: measure what works and repeat.',
+    'Speak like your audience, not like a manual.',
   ]
 
-  const payload = {
-    model,
-    temperature: 0.7,
-    messages,
-  }
-
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  })
-
-  if (!res.ok) {
-    const txt = await res.text()
-    throw new Error(`Groq ${res.status}: ${txt}`)
-  }
-
-  const json = (await res.json()) as any
-  const content: string = json?.choices?.[0]?.message?.content ?? ''
-  const parsed = extractJson(content)
-
-  if (parsed && typeof parsed === 'object') {
-    return {
-      hooks: Array.isArray(parsed.hooks) ? parsed.hooks.slice(0, 10) : undefined,
-      captions: Array.isArray(parsed.captions) ? parsed.captions.slice(0, 10) : undefined,
-      carousels: Array.isArray(parsed.carousels) ? parsed.carousels : undefined,
-      raw: content,
-    }
-  }
-
-  // fallback minimale
-  const lines = content
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean)
   return {
-    hooks: lines.slice(0, 3),
-    captions: lines.slice(3, 6),
-    carousels: [{ title: 'Carosello', slides: lines.slice(6, 11) }],
-    raw: content,
+    hooks: rand(lang === 'it' ? hooks_it : hooks_en, 3),
+    captions: rand(lang === 'it' ? caps_it : caps_en, 3),
   }
 }
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as { brief?: string }
-  const brief = (body?.brief ?? '').toString().trim()
-
-  if (!brief) {
-    return NextResponse.json({ ok: false, error: 'Missing brief' }, { status: 400 })
-  }
-
   try {
-    const model = process.env.GROQ_MODEL_DEMO || 'llama-3.1-8b-instant'
-    const out = await callGroq({ model, brief })
-    return NextResponse.json({ ok: true, result: out, model })
-  } catch {
-    return NextResponse.json({ ok: false, error: 'Demo failed' }, { status: 500 })
+    const { brief = 'ecommerce skincare minimal, premium tone', lang = 'it' } = (await req
+      .json()
+      .catch(() => ({}))) as Body
+
+    const result = demoGenerate(brief, lang)
+    return NextResponse.json({ ok: true, result })
+  } catch (e: any) {
+    console.error('[demo] error', e)
+    return NextResponse.json({ ok: false, error: 'unhandled' }, { status: 500 })
   }
 }

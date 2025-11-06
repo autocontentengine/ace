@@ -1,124 +1,109 @@
 // app/demo/page.tsx
 'use client'
+
 import { useState } from 'react'
+import PromptEnchanter from '@/app/_components/PromptEnchanter'
+import Track from '@/app/_components/Track'
 
 type DemoResult = {
-  ok: boolean
-  model?: string
-  result?: {
-    hooks?: string[]
-    captions?: string[]
-    carousels?: { title: string; slides: string[] }[]
-    raw?: string
-  }
-  error?: string
+  hooks: string[]
+  captions: string[]
 }
 
 export default function DemoPage() {
-  const [brief, setBrief] = useState('brand fitness, tono energico')
-  const [loading, setLoading] = useState(false)
-  const [data, setData] = useState<DemoResult | null>(null)
+  const [prompt, setPrompt] = useState('')
+  const [result, setResult] = useState<DemoResult | null>(null)
+  const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
-  async function runDemo(e?: React.FormEvent) {
-    e?.preventDefault()
-    setLoading(true)
+  async function generateCopy() {
     setErr(null)
-    setData(null)
+    const brief = prompt.trim() || 'ecommerce skincare minimal, tono premium'
     try {
-      const res = await fetch('/api/demo', {
+      setBusy(true)
+      const r = await fetch('/api/demo', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ brief }),
       })
-      const json = (await res.json()) as DemoResult
-      if (!res.ok || !json.ok) setErr(json.error || `HTTP ${res.status}`)
-      else setData(json)
+      const j = await r.json()
+      if (!j.ok) throw new Error(j.error || 'Errore API demo')
+      setResult({ hooks: j.result.hooks || [], captions: j.result.captions || [] })
     } catch (e: any) {
-      setErr(e?.message || 'errore')
+      setErr(e?.message ?? 'Errore')
     } finally {
-      setLoading(false)
+      setBusy(false)
     }
   }
 
+  function resetAll() {
+    setPrompt('')
+    setResult(null)
+    setErr(null)
+  }
+
   return (
-    <main className="mx-auto max-w-3xl p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Demo: 3 hook gratis</h1>
-      <p className="text-sm text-gray-500">
-        Inserisci un brief. Generiamo 3 hook, 3 caption e 1 carosello (outline).
-      </p>
+    <div className="min-h-screen bg-gradient-to-b from-[#0B0F1A] to-[#0F172A] text-white">
+      <header className="mx-auto max-w-5xl px-6 pt-12 pb-6">
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">🧪 Demo</h1>
+        <p className="mt-2 text-slate-300">Genera 3 hook + 3 caption (public, senza API key).</p>
+      </header>
 
-      <form onSubmit={runDemo} className="space-y-3">
-        <textarea
-          value={brief}
-          onChange={(e) => setBrief(e.target.value)}
-          className="w-full rounded-xl border p-3"
-          rows={3}
-          placeholder="es. ecommerce skincare minimal, tono premium"
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-xl px-4 py-2 font-medium shadow border hover:bg-gray-50 disabled:opacity-60"
-        >
-          {loading ? 'Generazione…' : 'Genera'}
-        </button>
-      </form>
+      <main className="mx-auto max-w-5xl px-6 pb-16 space-y-8">
+        <PromptEnchanter onUse={setPrompt} />
 
-      {err && (
-        <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-          Errore: {err}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
+          <div className="text-sm text-slate-300">Prompt attuale</div>
+          <textarea
+            className="w-full rounded-lg border border-white/10 bg-white/[0.06] p-3 text-sm outline-none"
+            rows={5}
+            placeholder="Incolla/modifica qui il prompt da usare…"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+
+          <div className="flex gap-2">
+            <button
+              onClick={generateCopy}
+              disabled={busy}
+              className="rounded-lg px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50"
+            >
+              {busy ? 'Genero…' : 'Genera copy (demo pubblica)'}
+            </button>
+            <button
+              onClick={resetAll}
+              className="rounded-lg px-4 py-2 text-sm font-medium bg-slate-700 hover:bg-slate-600"
+            >
+              Reset
+            </button>
+          </div>
+
+          {err && <div className="text-sm text-rose-400">{err}</div>}
         </div>
-      )}
 
-      {data?.result && (
-        <section className="space-y-6">
-          {data.result.hooks && (
-            <div>
-              <h2 className="font-semibold mb-2">Hook</h2>
-              <ul className="list-disc pl-5 space-y-1">
-                {data.result.hooks.map((h, i) => (
+        {result && (
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <h3 className="text-lg font-semibold">Hook (3)</h3>
+              <ul className="mt-3 list-disc pl-5 text-sm text-slate-200 space-y-1">
+                {result.hooks.map((h, i) => (
                   <li key={i}>{h}</li>
                 ))}
               </ul>
             </div>
-          )}
-
-          {data.result.captions && (
-            <div>
-              <h2 className="font-semibold mb-2">Caption</h2>
-              <ul className="list-disc pl-5 space-y-1">
-                {data.result.captions.map((c, i) => (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+              <h3 className="text-lg font-semibold">Caption (3)</h3>
+              <ul className="mt-3 list-disc pl-5 text-sm text-slate-200 space-y-1">
+                {result.captions.map((c, i) => (
                   <li key={i}>{c}</li>
                 ))}
               </ul>
             </div>
-          )}
+          </div>
+        )}
+      </main>
 
-          {data.result.carousels && (
-            <div>
-              <h2 className="font-semibold mb-2">Carosello</h2>
-              {data.result.carousels.map((car, i) => (
-                <div key={i} className="rounded-xl border p-3 mb-3">
-                  <div className="font-medium">{car.title}</div>
-                  <ol className="list-decimal pl-5 space-y-1 mt-1">
-                    {car.slides.map((s, j) => (
-                      <li key={j}>{s}</li>
-                    ))}
-                  </ol>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {data.result.raw && (
-            <details className="rounded-xl border p-3">
-              <summary className="cursor-pointer">Raw output</summary>
-              <pre className="text-xs whitespace-pre-wrap">{data.result.raw}</pre>
-            </details>
-          )}
-        </section>
-      )}
-    </main>
+      <Track path="/demo" />
+    </div>
   )
 }

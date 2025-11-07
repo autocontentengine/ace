@@ -1,143 +1,279 @@
 // app/api/generate/copy/route.ts
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
-const PUBLIC_TEST_KEY = 'ace_test_12345678901234567890123456789012'
-const PRIVATE_API_KEY = process.env.PRIVATE_API_KEY // opzionale
-
-function isAuthorized(req: NextRequest) {
-  const k = req.headers.get('x-api-key') ?? ''
-  return k === PUBLIC_TEST_KEY || (PRIVATE_API_KEY && k === PRIVATE_API_KEY)
-}
-
+type Lang = 'it' | 'en'
 type Body = {
   brief: string
-  lang?: 'it' | 'en'
+  lang?: Lang
+  n_hooks?: number
+  n_captions?: number
 }
 
-function fallbackGenerate(brief: string, lang: 'it' | 'en') {
-  const h_it = [
-    'Svegliati e brilla!',
-    'Meno parole, più impatto.',
-    'La semplicità che funziona.',
-    'Dove la qualità parla.',
-    'Fallo a modo tuo.',
-    'Ogni giorno, meglio.',
-    'Pensato per ispirare.',
-    'Il tuo prossimo passo.',
-  ]
-  const h_en = [
-    'Wake up and shine!',
-    'Fewer words, more impact.',
-    'Simplicity that works.',
-    'Where quality speaks.',
-    'Do it your way.',
-    'Better every day.',
-    'Built to inspire.',
-    'Your next move.',
-  ]
-  const c_it = [
-    `Brief: ${brief}. Trova il tuo tono e resta costante.`,
-    `Parti dall’essenziale: messaggi chiari, immagini pulite.`,
-    `Parla al tuo pubblico, una promessa chiara alla volta.`,
-    `Ogni post è un test: misura, migliora, ripeti.`,
-    `Più valore, meno rumore.`,
-  ]
-  const c_en = [
-    `Brief: ${brief}. Find your tone and stay consistent.`,
-    `Start from the essentials: clear copy, clean visuals.`,
-    `Speak to your audience, one clear promise at a time.`,
-    `Every post is a test: measure, improve, repeat.`,
-    `More value, less noise.`,
-  ]
-  const hooks = (lang === 'it' ? h_it : h_en).slice(0, 6)
-  const captions = (lang === 'it' ? c_it : c_en).slice(0, 5)
-  return { hooks, captions }
-}
+const MODEL = 'llama-3.3-70b-versatile'
+const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions'
+const API_KEY = process.env.GROQ_API_KEY || ''
 
 export async function POST(req: NextRequest) {
-  if (!isAuthorized(req)) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-  }
-
   try {
-    const { brief, lang = 'it' } = (await req.json()) as Body
-    if (!brief || typeof brief !== 'string') {
-      return NextResponse.json({ ok: false, error: 'invalid brief' }, { status: 400 })
+    if (!API_KEY) {
+      return NextResponse.json({ ok: false, error: 'missing_groq_api_key' }, { status: 500 })
+    }
+    const b = (await req.json()) as Body
+    const brief = (b.brief || '').trim()
+    const lang: Lang = b.lang === 'en' ? 'en' : 'it'
+    const nHooks = clampInt(b.n_hooks ?? 7, 3, 12)
+    const nCaptions = clampInt(b.n_captions ?? 5, 3, 12)
+
+    if (!brief) {
+      return NextResponse.json({ ok: false, error: 'missing_brief' }, { status: 400 })
     }
 
-    const GROQ_API_KEY = process.env.GROQ_API_KEY
-    const targetLang = lang === 'en' ? 'English' : 'Italiano'
+    const system = lang === 'en' ? SYSTEM_EN : SYSTEM_IT
+    const user = buildUserPrompt(brief, lang, nHooks, nCaptions)
 
-    if (!GROQ_API_KEY) {
-      const { hooks, captions } = fallbackGenerate(brief, lang)
-      return NextResponse.json({
-        ok: true,
-        brief,
-        model: 'fallback-local',
-        result: { hooks, captions },
-      })
-    }
-
-    const system = `You are a marketing copywriter. Write concise social hooks and captions in ${targetLang}. Keep it natural, catchy, and useful.`
-    const user = `BRIEF: ${brief}
-
-Return ONLY a minified JSON object with:
-{
-  "hooks": ["... up to 8 short hooks ..."],
-  "captions": ["... 5-8 short captions ..."]
-}`
-
-    const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const resp = await fetch(ENDPOINT, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${GROQ_API_KEY}`,
-      },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${API_KEY}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        temperature: 0.7,
-        max_tokens: 512,
+        model: MODEL,
+        temperature: 0.8,
+        max_tokens: 800,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
+          { role: 'user', content: FEWSHOTS[lang] },
         ],
         response_format: { type: 'json_object' },
       }),
     })
 
     if (!resp.ok) {
-      const txt = await resp.text()
-      console.error('[generate/copy] groq error', resp.status, txt)
-      const { hooks, captions } = fallbackGenerate(brief, lang)
-      return NextResponse.json({
+      const txt = await resp.text().catch(() => '')
+      return NextResponse.json(
+        { ok: false, error: 'groq_error', status: resp.status, text: txt },
+        { status: 502 }
+      )
+    }
+
+    const json = await resp.json()
+    const content: string = json?.choices?.[0]?.message?.content ?? '{}'
+    const parsed = safeParse(content)
+
+    // Normalizza & migliora
+    const hooks = postProcessHooks(parsed.hooks ?? [], lang, nHooks)
+    const captions = postProcessCaptions(parsed.captions ?? [], lang, nCaptions)
+
+    return NextResponse.json(
+      {
         ok: true,
         brief,
-        model: 'fallback-local',
+        lang,
+        model: MODEL,
         result: { hooks, captions },
-      })
-    }
-
-    const data = await resp.json()
-    const content = data?.choices?.[0]?.message?.content ?? '{}'
-    let parsed: any = {}
-    try {
-      parsed = JSON.parse(content)
-    } catch {
-      parsed = {}
-    }
-    const hooks: string[] = Array.isArray(parsed.hooks) ? parsed.hooks.slice(0, 8) : []
-    const captions: string[] = Array.isArray(parsed.captions) ? parsed.captions.slice(0, 8) : []
-
-    return NextResponse.json({
-      ok: true,
-      brief,
-      model: 'llama-3.3-70b-versatile',
-      result: { hooks, captions },
-    })
-  } catch (e: any) {
+      },
+      { status: 200 }
+    )
+  } catch (e) {
     console.error('[generate/copy] error', e)
-    return NextResponse.json({ ok: false, error: 'unhandled' }, { status: 500 })
+    return NextResponse.json(
+      { ok: false, error: 'bad_request', message: String(e) },
+      { status: 400 }
+    )
   }
+}
+
+function clampInt(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, Math.floor(n)))
+}
+
+function buildUserPrompt(brief: string, lang: Lang, nHooks: number, nCaptions: number) {
+  const req =
+    lang === 'en'
+      ? `BRIEF: ${brief}\n\nReturn tight, punchy marketing copy.`
+      : `BRIEF: ${brief}\n\nRitorna copy marketing breve e incisivo.`
+  return JSON.stringify({
+    task: 'hooks_captions',
+    lang,
+    constraints: {
+      hooks: { count: nHooks, max_words: 8, ban_words: BANLIST[lang] },
+      captions: { count: nCaptions, max_chars: 160, ban_words: BANLIST[lang] },
+      tone: 'brand-consistent, concrete, modern',
+      avoid: ['cliché', 'over-promising', 'spammy CTA'],
+    },
+    format: { type: 'json', shape: { hooks: ['...'], captions: ['...'] } },
+    brief: req,
+  })
+}
+
+function safeParse(s: string): any {
+  try {
+    return JSON.parse(s)
+  } catch {
+    return {}
+  }
+}
+
+const BANLIST: Record<Lang, string[]> = {
+  it: ['scopri', 'trasforma', 'sblocca', 'rivoluziona', 'impareggiabile', 'definitivo'],
+  en: ['discover', 'transform', 'unlock', 'revolutionize', 'unbeatable', 'ultimate'],
+}
+
+const SYSTEM_IT = `
+Sei un copywriter senior per social. Genera HOOK (<=8 parole, senza cliché) e CAPTION (<=160 caratteri) in ITALIANO.
+Evita superlativi abusati. Tono moderno, concreto, focalizzato su beneficio/USP. Rispondi SOLO in JSON valido {"hooks":[], "captions":[]}.
+`.trim()
+
+const SYSTEM_EN = `
+You are a senior social copywriter. Generate HOOKS (<=8 words, no clichés) and CAPTIONS (<=160 chars) in ENGLISH.
+Avoid overused superlatives. Modern, concrete tone with clear benefits/USPs. Reply ONLY valid JSON {"hooks":[], "captions":[]}.
+`.trim()
+
+const FEWSHOTS: Record<Lang, string> = {
+  it: JSON.stringify({
+    positive_example: {
+      hooks: ['Routine semplice, risultati visibili', 'Pelle luminosa, zero fronzoli'],
+      captions: [
+        'Ingredienti essenziali, efficacia reale. La tua pelle, al meglio ogni giorno.',
+        'Formula pulita. Risultati che vedi e senti.',
+      ],
+    },
+    negative_example: {
+      hooks: ['Scopri il segreto definitivo!!!', 'Trasforma la tua vita per sempre'],
+      captions: [
+        'Il prodotto migliore di sempre, risultati miracolosi in 3 giorni!!!',
+        'Sblocca la pelle perfetta in un attimo!',
+      ],
+    },
+  }),
+  en: JSON.stringify({
+    positive_example: {
+      hooks: ['Clean routine, visible results', 'Radiant skin, no fuss'],
+      captions: [
+        'Essential ingredients. Real efficacy. Your skin, at its best—daily.',
+        'Clean formula. Results you can feel and see.',
+      ],
+    },
+    negative_example: {
+      hooks: ['Discover the ultimate secret!!!', 'Transform your life forever'],
+      captions: [
+        'The best product ever—miracle results in 3 days!!!',
+        'Unlock perfect skin instantly!',
+      ],
+    },
+  }),
+}
+
+// ---------- Post-processing & rerank ----------
+
+function postProcessHooks(hooks: string[], lang: Lang, target: number) {
+  const cleaned = hooks
+    .map((h) => normalizeLine(h, lang))
+    .filter(Boolean)
+    .filter((h) => !containsBanned(h!, BANLIST[lang]))
+  const deduped = dedupeCaseInsensitive(cleaned as string[])
+  const reranked = rerankHooks(deduped, lang)
+  return padIfShort(reranked, lang, target)
+}
+
+function postProcessCaptions(caps: string[], lang: Lang, target: number) {
+  const cleaned = caps
+    .map((c) => normalizeSentence(c, lang))
+    .filter(Boolean)
+    .filter((c) => !containsBanned(c!, BANLIST[lang]))
+  const deduped = dedupeCaseInsensitive(cleaned as string[])
+  const reranked = rerankCaptions(deduped)
+  return padIfShort(reranked, lang, target, true)
+}
+
+function normalizeLine(s: string, lang: Lang) {
+  let t = s.trim()
+  if (!t) return ''
+  // 1) rimuovi punteggiatura urlata
+  t = t.replace(/[!?.]{2,}$/u, '!').replace(/\s{2,}/g, ' ')
+  // 2) capitalizza prima lettera, niente tutto maiuscolo
+  t = t[0].toUpperCase() + t.slice(1)
+  if (/^[A-Z\s]+$/.test(t)) t = toTitleCase(t.toLowerCase())
+  // 3) small truncation
+  const words = t.split(/\s+/)
+  if (words.length > 10) t = words.slice(0, 10).join(' ')
+  return t
+}
+
+function normalizeSentence(s: string, lang: Lang) {
+  let t = s.trim()
+  if (!t) return ''
+  t = t.replace(/\s{2,}/g, ' ')
+  if (!/[.?!…]$/.test(t)) t += '.'
+  if (/^[A-Z\s]+$/.test(t)) t = toTitleCase(t.toLowerCase())
+  if (t.length > 180) t = t.slice(0, 177).trimEnd() + '…'
+  return t[0].toUpperCase() + t.slice(1)
+}
+
+function containsBanned(s: string, banned: string[]) {
+  const low = s.toLowerCase()
+  return banned.some((w) => low.includes(w))
+}
+
+function dedupeCaseInsensitive(arr: string[]) {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const s of arr) {
+    const k = s.toLowerCase()
+    if (!seen.has(k)) {
+      seen.add(k)
+      out.push(s)
+    }
+  }
+  return out
+}
+
+function rerankHooks(list: string[], lang: Lang) {
+  return [...list].sort((a, b) => scoreHook(b, lang) - scoreHook(a, lang))
+}
+
+function rerankCaptions(list: string[]) {
+  return [...list].sort((a, b) => scoreCaption(b) - scoreCaption(a))
+}
+
+function scoreHook(s: string, lang: Lang) {
+  const words = s.trim().split(/\s+/).length
+  const ideal = 6 // sweet spot
+  const lenScore = 1 - Math.min(1, Math.abs(words - ideal) / ideal)
+  const power =
+    /(\bskin|\bpelle|\bclean|\broutine|\bradiant|\bglow|\bresults|\bresultati|\bessenziale)/i.test(
+      s
+    )
+      ? 0.3
+      : 0
+  const noPunct = /[!?]$/.test(s) ? 0 : 0.1
+  return lenScore + power + noPunct
+}
+
+function scoreCaption(s: string) {
+  const len = s.length
+  const ideal = 120
+  const lenScore = 1 - Math.min(1, Math.abs(len - ideal) / ideal)
+  const hasBenefit =
+    /\b(benefit|results|efficacy|routine|ingredient|formula|pelle|risultati|efficacia)\b/i.test(s)
+      ? 0.2
+      : 0
+  return lenScore + hasBenefit
+}
+
+function padIfShort(list: string[], lang: Lang, target: number, sentence = false) {
+  const out = [...list]
+  while (out.length < target) {
+    const base = (list[out.length % list.length] ?? 'More value, less noise').trim()
+    const v = sentence ? base + ' ' : base + ' •'
+    out.push(normalizeLine(v, lang))
+  }
+  return out.slice(0, target)
+}
+
+function toTitleCase(s: string) {
+  return s.replace(/\w\S*/g, (t) => t[0].toUpperCase() + t.slice(1).toLowerCase())
 }

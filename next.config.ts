@@ -2,12 +2,12 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  // 👉 Next 16: chiave corretta (non più in experimental)
+  // Next 16: pacchetti con native bindings lato server
   serverExternalPackages: ['@resvg/resvg-js'],
 
   webpack: (config, { isServer }) => {
     if (isServer) {
-      // Cintura e bretelle: segnala comunque il pacchetto come external
+      // Cintura & bretelle: mantieni @resvg/resvg-js come external
       const externals = Array.isArray(config.externals)
         ? config.externals
         : config.externals

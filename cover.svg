@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1080" height="1350" viewBox="0 0 1080 1350" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      @font-face {
+        font-family: 'Inter400';
+        font-style: normal;
+        font-weight: 400;
+        src: url(data:font/woff2;base64,AAEAAAALAIAAAwAwT1MvMg8SBJYAAAC8AAAAYGNtYXAWINQYAAABHAAAA...==) format('woff2');
+      }
+      .bg { fill: url(#g); }
+      .title {
+        font-family: 'Inter400', system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+        font-size: 72px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+        fill: #FFFFFF;
+      }
+      .brand { font-family: 'Inter400', system-ui; font-size: 18px; fill: #94A3B8; }
+      .pill { fill: #8B5CF6; fill-opacity: 0.18; }
+      .pill-stroke { stroke: #8B5CF6; stroke-opacity: 0.45; }
+    </style>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0B0F1A"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1080" height="1350" rx="32"/>
+
+  <!-- accent pill -->
+  <g transform="translate(64, 64)">
+    <rect x="0" y="0" width="160" height="40" rx="20" class="pill"/>
+    <rect x="0.5" y="0.5" width="159" height="39" rx="19.5" fill="none" class="pill-stroke"/>
+    <text x="80" y="26" text-anchor="middle" class="brand">ACE • Autocontent Engine</text>
+  </g>
+
+  <!-- headline -->
+  <g transform="translate(64, 184)">
+    <text class="title" x="0" y="0">ACE � Cover SVG</text>
+  </g>
+
+  <!-- footer -->
+  <g transform="translate(64, 1286)">
+    <text class="brand" x="0" y="0">Generated cover • DARK</text>
+  </g>
+</svg>

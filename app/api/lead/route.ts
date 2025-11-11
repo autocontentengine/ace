@@ -1,12 +1,16 @@
 // app/api/lead/route.ts
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readToonOrJson, toonFromObject } from '@/lib/toon/io'
 
-// Guard: salta scritture solo in DEV quando DISABLE_REMOTE_DEV=1
-function remoteDevDisabled() {
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+// Guard DEV: evita scritture remote se DISABLE_REMOTE_DEV=1
+function isRemoteDevDisabled() {
   return process.env.NODE_ENV !== 'production' && process.env.DISABLE_REMOTE_DEV === '1'
 }
-
 function createAdmin() {
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -15,38 +19,73 @@ function createAdmin() {
 }
 
 export async function POST(req: NextRequest) {
-  if (remoteDevDisabled()) {
-    return NextResponse.json({ ok: true, skipped: 'remote dev disabled' })
-  }
-
+  const t0 = Date.now()
   try {
-    const { email, source } = (await req.json().catch(() => ({}))) as {
-      email?: string
-      source?: string
+    const { data } = await readToonOrJson(req)
+    // Supportiamo "lead:" o top-level
+    const payload = data?.lead && typeof data.lead === 'object' ? (data.lead as any) : (data as any)
+
+    const email = String(payload.email || '').trim()
+    const name = (payload.name ? String(payload.name) : null) || null
+    const source = (payload.source ? String(payload.source) : null) || null
+
+    if (!email) {
+      return new NextResponse('error: missing_email\n', {
+        status: 400,
+        headers: { 'content-type': 'text/toon; charset=utf-8' },
+      })
     }
 
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return NextResponse.json({ ok: false, error: 'Email non valida' }, { status: 400 })
+    if (isRemoteDevDisabled()) {
+      const resp = toonFromObject({
+        ok: true,
+        dry_run: true,
+        saved: { email, name, source },
+        latency_ms: Date.now() - t0,
+      } as any)
+      return new NextResponse(resp + '\n', {
+        status: 200,
+        headers: { 'content-type': 'text/toon; charset=utf-8' },
+      })
     }
 
     const supabase = createAdmin()
     const { error } = await supabase.from('leads').insert({
       email,
-      source: source ?? 'pricing',
+      name,
+      source,
     })
 
-    // dedupe soft: se violi unique(email) rispondi lo stesso ok
     if (error) {
-      if (error.code === '23505') {
-        return NextResponse.json({ ok: true, deduped: true })
-      }
-      console.error('[lead] insert error', error)
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+      const resp = toonFromObject({
+        ok: false,
+        error: 'supabase_insert_failed',
+        details: error.message,
+      })
+      return new NextResponse(resp + '\n', {
+        status: 500,
+        headers: { 'content-type': 'text/toon; charset=utf-8' },
+      })
     }
 
-    return NextResponse.json({ ok: true })
+    const ok = toonFromObject({
+      ok: true,
+      saved: { email, name, source },
+      latency_ms: Date.now() - t0,
+    } as any)
+    return new NextResponse(ok + '\n', {
+      status: 200,
+      headers: { 'content-type': 'text/toon; charset=utf-8' },
+    })
   } catch (e: any) {
-    console.error('[lead] unhandled', e)
-    return NextResponse.json({ ok: false, error: 'Unhandled error' }, { status: 500 })
+    const resp = toonFromObject({
+      ok: false,
+      error: 'unexpected',
+      message: e?.message ?? String(e),
+    })
+    return new NextResponse(resp + '\n', {
+      status: 500,
+      headers: { 'content-type': 'text/toon; charset=utf-8' },
+    })
   }
 }

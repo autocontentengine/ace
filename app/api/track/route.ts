@@ -1,11 +1,15 @@
 // app/api/track/route.ts
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { readToonOrJson, toonFromObject } from '@/lib/toon/io'
 
-function remoteDevDisabled() {
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+function isRemoteDevDisabled() {
   return process.env.NODE_ENV !== 'production' && process.env.DISABLE_REMOTE_DEV === '1'
 }
-
 function createAdmin() {
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -14,40 +18,72 @@ function createAdmin() {
 }
 
 export async function POST(req: NextRequest) {
-  if (remoteDevDisabled()) {
-    return NextResponse.json({ ok: true, skipped: 'remote dev disabled' })
-  }
-
+  const t0 = Date.now()
   try {
-    const body = (await req.json().catch(() => ({}))) as { path?: string }
-    const path = body.path ?? '/'
+    const { data } = await readToonOrJson(req)
+    // Supportiamo "track:" o top-level
+    const payload =
+      data?.track && typeof data.track === 'object' ? (data.track as any) : (data as any)
 
-    const h = req.headers
-    const xff = h.get('x-forwarded-for') ?? ''
-    const realIp = h.get('x-real-ip') ?? ''
-    const ip = (xff.split(',')[0]?.trim() || realIp || '').slice(0, 255) || null
+    const event = String(payload.event || payload.name || '').trim() || 'page_view'
+    const path = (payload.path ? String(payload.path) : null) || null
+    const referer =
+      payload.referer || payload.referrer ? String(payload.referer || payload.referrer) : null
+    const session_id = (payload.session_id ? String(payload.session_id) : null) || null
+    const ua = req.headers.get('user-agent') || null
 
-    const origin = h.get('origin') || null
-    // header standard HTTP è "referer"; in DB la colonna si chiama "referrer"
-    const referrer = h.get('referer') || h.get('referrer') || null
+    if (isRemoteDevDisabled()) {
+      const resp = toonFromObject({
+        ok: true,
+        dry_run: true,
+        saved: { event, path, referer, session_id },
+        latency_ms: Date.now() - t0,
+      } as any)
+      return new NextResponse(resp + '\n', {
+        status: 200,
+        headers: { 'content-type': 'text/toon; charset=utf-8' },
+      })
+    }
 
     const supabase = createAdmin()
     const { error } = await supabase.from('page_views').insert({
+      event,
       path,
-      ip,
-      origin,
-      referrer,
+      referer,
+      session_id,
+      ua,
     })
 
     if (error) {
-      console.error('[track] insert error', error)
-      // non blocchiamo il rendering lato utente
-      return NextResponse.json({ ok: true, warn: error.message })
+      const resp = toonFromObject({
+        ok: false,
+        error: 'supabase_insert_failed',
+        details: error.message,
+      })
+      return new NextResponse(resp + '\n', {
+        status: 500,
+        headers: { 'content-type': 'text/toon; charset=utf-8' },
+      })
     }
 
-    return NextResponse.json({ ok: true })
+    const ok = toonFromObject({
+      ok: true,
+      saved: { event, path, referer, session_id },
+      latency_ms: Date.now() - t0,
+    } as any)
+    return new NextResponse(ok + '\n', {
+      status: 200,
+      headers: { 'content-type': 'text/toon; charset=utf-8' },
+    })
   } catch (e: any) {
-    console.error('[track] unhandled', e)
-    return NextResponse.json({ ok: true, warn: 'unhandled' })
+    const resp = toonFromObject({
+      ok: false,
+      error: 'unexpected',
+      message: e?.message ?? String(e),
+    })
+    return new NextResponse(resp + '\n', {
+      status: 500,
+      headers: { 'content-type': 'text/toon; charset=utf-8' },
+    })
   }
 }

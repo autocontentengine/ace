@@ -56,3 +56,7 @@ reports/
 /carousel.zip
 *.zip
 /reports/
+.env*
+.next
+.turbo
+

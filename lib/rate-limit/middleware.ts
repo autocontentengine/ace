@@ -1,14 +1,17 @@
 // lib/rate-limit/middleware.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { isRateLimited } from './rate-limit'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
+import { guardOr429 } from './rate-limit'
 
 /**
- * Ritorna:
- *  - NextResponse 429 se rate-limited
- *  - null se ok
+ * Middleware helper:
+ *  - Ritorna 429 se rate-limited
+ *  - Ritorna null se OK
  */
-export async function enforceRateLimit(req: NextRequest, endpoint = 'default') {
-  const userId = (req as any).user?.id ?? req.headers.get('x-user-id') ?? null
-  const limited = await isRateLimited(userId, endpoint)
-  return limited ? NextResponse.json({ error: 'Too many requests' }, { status: 429 }) : null
+export async function enforceRateLimit(
+  req: NextRequest,
+  endpoint = 'default',
+  maxHits = 60
+): Promise<NextResponse | null> {
+  return guardOr429(req, { endpoint, maxHits })
 }

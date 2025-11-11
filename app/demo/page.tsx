@@ -32,6 +32,7 @@ export default function DemoPage() {
         },
         body: JSON.stringify({ brief: textToUse, lang }),
       })
+      // Preferisci TOON? imposta 'accept: text/toon' sopra e poi fai parse lato client.
       const data = await res.json()
       if (data?.result) {
         setHooks(data.result.hooks ?? [])
@@ -55,7 +56,7 @@ export default function DemoPage() {
         body: JSON.stringify({ prompt, lang }),
       })
       const data = await res.json()
-      if (data?.enhanced) setEnhanced(data.enhanced)
+      if (data?.prompt) setEnhanced(data.prompt)
     } catch (e) {
       console.error(e)
     } finally {
@@ -65,18 +66,21 @@ export default function DemoPage() {
 
   async function makeCover(format: 'svg' | 'png' = 'svg') {
     if (!textToUse) return
-    const res = await fetch('/api/image/cover', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text: textToUse, format }),
-    })
-    if (!res.ok) return
-    const blob = await res.blob()
-    setCoverUrl(URL.createObjectURL(blob))
+    try {
+      const res = await fetch('/api/image/cover', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: textToUse, format }),
+      })
+      if (!res.ok) return
+      const blob = await res.blob()
+      setCoverUrl(URL.createObjectURL(blob))
+    } catch (e) {
+      console.error(e)
+    }
   }
 
   async function makeCoverViaHorde() {
-    // Richiede .env con HORDE_API_KEY (già impostato) e la route /api/image/horde creata
     if (!textToUse) return
     setBusy(true)
     try {
@@ -85,7 +89,11 @@ export default function DemoPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           prompt: textToUse,
-          model: 'stable-diffusion-xl-1.0', // es: puoi cambiarlo nella route horde
+          model: 'stable-diffusion-xl-1.0',
+          width: 384,
+          height: 384,
+          steps: 6,
+          format: 'png',
         }),
       })
       if (!res.ok) throw new Error('Horde generation failed')
@@ -112,7 +120,6 @@ export default function DemoPage() {
         body: JSON.stringify({
           slides,
           theme: 'dark',
-          // opzionale: prova lo sfondo da Horde dietro i testi
           // background: 'horde',
           // hordePromptTemplate: 'Luxury skincare background, minimal, high-contrast, ...',
         }),

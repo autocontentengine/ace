@@ -2,46 +2,43 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import JSZip from 'jszip'
-import { isRateLimited, clientUUID } from '@/lib/rate-limit/rate-limit'
+import sharp from 'sharp'
+import { guardOr429 } from '@/lib/rate-limit/rate-limit'
+import { parseTOON } from '@/lib/toon/parse'
 
 export const runtime = 'nodejs'
 
+// ---------- Tipi ----------
 type BgKind = 'plain' | 'horde'
+type Format = 'svg' | 'png'
+type Profile = 'square' | 'portrait' | 'story'
+
 type Body = {
   slides?: string[]
   count?: number
+  profiles?: Profile[]
+  formats?: Format[]
   width?: number
   height?: number
   background?: BgKind
-  /** se usi la tua /api/image/horde puoi passare un prompt template qui (opzionale) */
   hordePromptTemplate?: string
-  /** nuovi: formati e profili di export */
-  formats?: Array<'svg' | 'png'>
-  profiles?: Array<'square' | 'portrait' | 'story'>
 }
 
-const DEFAULT_W = 1080
-const DEFAULT_H = 1350
-const DEFAULT_COUNT = 5
-
-const PROFILE_SIZES = {
+// ---------- Costanti ----------
+const DEFAULT_COUNT = 5 as const
+const PROFILES: Record<Profile, { width: number; height: number }> = {
   square: { width: 1080, height: 1080 },
-  portrait: { width: 1080, height: 1350 }, // 4:5
-  story: { width: 1080, height: 1920 }, // 9:16
-} as const
-type Profile = keyof typeof PROFILE_SIZES
-function isProfile(x: unknown): x is Profile {
-  return x === 'square' || x === 'portrait' || x === 'story'
+  portrait: { width: 1080, height: 1350 },
+  story: { width: 1080, height: 1920 },
 }
 
-/** Converte un Uint8Array in un ArrayBuffer “pulito” (garantito, non SharedArrayBuffer). */
+// ---------- Utils base ----------
 function toArrayBuffer(u8: Uint8Array): ArrayBuffer {
   const ab = new ArrayBuffer(u8.byteLength)
   new Uint8Array(ab).set(u8)
   return ab
 }
 
-/** Escape base XML per sicurezza. */
 function escapeXml(s: string): string {
   return s
     .replaceAll('&', '&amp;')
@@ -51,7 +48,6 @@ function escapeXml(s: string): string {
     .replaceAll("'", '&apos;')
 }
 
-/** Semplice “auto-fit” del font: più testo → font più piccolo. */
 function pickFontSize(text: string): number {
   const len = text.trim().length
   if (len > 110) return 40
@@ -61,8 +57,7 @@ function pickFontSize(text: string): number {
   return 72
 }
 
-/** Wrap con limite di righe e ellissi sull’ultima riga. */
-function wrapWords(text: string, maxWordsPerLine: number, maxLines = 5): string[] {
+function wrapWords(text: string, maxWordsPerLine: number): string[] {
   const words = text.trim().split(/\s+/)
   const lines: string[] = []
   let buf: string[] = []
@@ -70,19 +65,13 @@ function wrapWords(text: string, maxWordsPerLine: number, maxLines = 5): string[
     if (buf.length >= maxWordsPerLine) {
       lines.push(buf.join(' '))
       buf = []
-      if (lines.length >= maxLines) break
     }
     buf.push(w)
   }
-  if (lines.length < maxLines && buf.length) lines.push(buf.join(' '))
-  const totalCapacity = maxWordsPerLine * maxLines
-  if (words.length > totalCapacity || (lines.length === maxLines && buf.length)) {
-    lines[maxLines - 1] = lines[maxLines - 1].replace(/…?$/, '') + '…'
-  }
+  if (buf.length) lines.push(buf.join(' '))
   return lines
 }
 
-/** Colori carini per sfondo semplice. */
 function palette(i: number) {
   const sets = [
     { bg1: '#0B0F1A', bg2: '#0F172A', fg: '#FFFFFF', subtle: '#94A3B8', accent: '#8B5CF6' },
@@ -92,7 +81,9 @@ function palette(i: number) {
   return sets[i % sets.length]
 }
 
-/** Costruisce un SVG per una singola slide. */
+/**
+ * buildSlideSVG con clamp delle righe (anti overflow).
+ */
 function buildSlideSVG(
   text: string,
   idx: number,
@@ -104,10 +95,18 @@ function buildSlideSVG(
 
   const fs = pickFontSize(text)
   const wordsPerLine = fs >= 72 ? 6 : fs >= 64 ? 7 : fs >= 56 ? 8 : fs >= 48 ? 9 : 10
-  const lines = wrapWords(text, wordsPerLine, 5)
+  const rawLines = wrapWords(text, wordsPerLine)
 
-  const titleYStart = pad + 120
+  const titleTop = pad + 120
+  const titleBottom = height - pad - 64
   const lineH = Math.round(fs * 1.15)
+  const maxLines = Math.max(1, Math.floor((titleBottom - titleTop) / lineH))
+
+  const lines = rawLines.slice(0, maxLines)
+  if (rawLines.length > maxLines) {
+    const last = lines[lines.length - 1]
+    lines[lines.length - 1] = (last.replace(/\.*$/, '').trimEnd() + '…').trim()
+  }
 
   const bgNode =
     background === 'horde' && bgDataUrl
@@ -138,49 +137,114 @@ function buildSlideSVG(
 
   ${bgNode}
 
-  <!-- cornice -->
   <rect x="8" y="8" width="${width - 16}" height="${height - 16}" rx="24" fill="none" stroke="${colors.accent}" stroke-opacity="0.35"/>
 
-  <!-- badge -->
   <g transform="translate(${pad}, ${pad})">
     <rect x="0" y="0" width="140" height="40" rx="20" fill="${colors.accent}" fill-opacity="0.25" />
     <text x="70" y="26" text-anchor="middle" class="badge">Slide ${String(idx + 1).padStart(2, '0')}</text>
   </g>
 
-  <!-- titolo -->
-  <g transform="translate(${pad}, ${titleYStart})">
+  <g transform="translate(${pad}, ${titleTop})">
     ${lines
       .map(
         (line, i) =>
           `<text class="title" x="0" y="${i * lineH}" font-size="${fs}">${escapeXml(line)}</text>`
       )
-      .join('\n')}
+      .join('\n    ')}
   </g>
 </svg>`
 }
 
-/** Assicura un array di lunghezza esatta `n` (riempie o tronca). */
 function ensureCount(items: string[], n: number): string[] {
   const out = items.slice(0, n)
   while (out.length < n) out.push(`Slide ${String(out.length + 1).padStart(2, '0')}`)
   return out
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    // --- Rate limit guard ---
-    const userId = clientUUID(req)
-    const limited = await isRateLimited(userId, 'carousel')
-    if (limited) {
-      return NextResponse.json({ ok: false, error: 'rate_limited' }, { status: 429 })
-    }
+async function svgToPng(svg: string, width: number, height: number): Promise<Uint8Array> {
+  const buf = await sharp(Buffer.from(svg)).resize(width, height, { fit: 'cover' }).png().toBuffer()
+  return new Uint8Array(buf)
+}
 
-    const body = (await req.json()) as Body
+async function tryHordeBg(
+  text: string,
+  width: number,
+  height: number,
+  template?: string
+): Promise<string | undefined> {
+  try {
+    const prompt =
+      template
+        ?.replaceAll('{text}', text)
+        .replaceAll('{w}', String(width))
+        .replaceAll('{h}', String(height)) ?? `${text}, minimal abstract background`
+    const resp = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || ''}/api/image/horde`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt, width, height, steps: 8, format: 'png' }),
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!resp.ok) return undefined
+    const u8 = new Uint8Array(await resp.arrayBuffer())
+    const b64 = Buffer.from(u8).toString('base64')
+    return `data:image/png;base64,${b64}`
+  } catch {
+    return undefined
+  }
+}
+
+// ---------- Parser input (TOON o JSON) ----------
+async function readBody(req: NextRequest): Promise<Body> {
+  const ct = (req.headers.get('content-type') || '').toLowerCase()
+  if (ct.includes('text/toon')) {
+    const raw = await req.text()
+    const doc = parseTOON(raw) as any
+    const payload = doc?.carousel ?? doc ?? {}
+    return {
+      slides: Array.isArray(payload.slides) ? payload.slides.map(String) : undefined,
+      count: Number.isFinite(payload.count) ? Number(payload.count) : undefined,
+      profiles: Array.isArray(payload.profiles) ? payload.profiles : undefined,
+      formats: Array.isArray(payload.formats) ? payload.formats : undefined,
+      width: Number.isFinite(payload.width) ? Number(payload.width) : undefined,
+      height: Number.isFinite(payload.height) ? Number(payload.height) : undefined,
+      background: payload.background === 'horde' ? 'horde' : 'plain',
+      hordePromptTemplate:
+        typeof payload.hordePromptTemplate === 'string' ? payload.hordePromptTemplate : undefined,
+    }
+  }
+
+  const j = await req.json().catch(() => ({}) as any)
+  const payload = j?.carousel ?? j ?? {}
+  return {
+    slides: Array.isArray(payload.slides) ? payload.slides.map(String) : undefined,
+    count: Number.isFinite(payload.count) ? Number(payload.count) : undefined,
+    profiles: Array.isArray(payload.profiles) ? payload.profiles : undefined,
+    formats: Array.isArray(payload.formats) ? payload.formats : undefined,
+    width: Number.isFinite(payload.width) ? Number(payload.width) : undefined,
+    height: Number.isFinite(payload.height) ? Number(payload.height) : undefined,
+    background: payload.background === 'horde' ? 'horde' : 'plain',
+    hordePromptTemplate:
+      typeof payload.hordePromptTemplate === 'string' ? payload.hordePromptTemplate : undefined,
+  }
+}
+
+// ---------- Handler ----------
+export async function POST(req: NextRequest) {
+  const guard = await guardOr429(req, { endpoint: 'carousel', maxHits: 60, windowSec: 60 })
+  if (guard) return guard
+
+  try {
+    const body = await readBody(req)
 
     const count = Number.isFinite(body.count)
       ? Math.max(1, Math.min(10, body.count!))
       : DEFAULT_COUNT
-    const background: BgKind = body.background === 'horde' ? 'horde' : 'plain'
+    const profiles = (body.profiles?.length ? body.profiles : (['portrait'] as Profile[])).filter(
+      (p): p is Profile => p === 'square' || p === 'portrait' || p === 'story'
+    )
+    const formats = (body.formats?.length ? body.formats : (['svg'] as Format[])).filter(
+      (f): f is Format => f === 'svg' || f === 'png'
+    )
 
     const baseSlides =
       Array.isArray(body.slides) && body.slides.length
@@ -188,69 +252,69 @@ export async function POST(req: NextRequest) {
         : ['Hook 1', 'Hook 2', 'Hook 3']
     const slides = ensureCount(baseSlides, count)
 
-    // Formati e profili (con narrowing forte)
-    const rawProfiles = Array.isArray(body.profiles) ? body.profiles.filter(isProfile) : []
-    const profiles: Profile[] = rawProfiles.length ? rawProfiles : ['portrait']
-    const formats = Array.isArray(body.formats) && body.formats.length ? body.formats : ['svg']
-
-    const sizes = profiles.map((p) => ({ key: p, ...PROFILE_SIZES[p] }))
-
-    // (Opzionale) background "horde": chiama un tuo endpoint che restituisce un dataURL
-    let bgDataUrl: string | undefined = undefined
-    if (background === 'horde' && body.hordePromptTemplate) {
-      try {
-        const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://ace-six-gules.vercel.app'
-        const first = sizes[0]!
-        const resp = await fetch(`${base}/api/image/horde`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            promptTemplate: body.hordePromptTemplate,
-            width: first.width,
-            height: first.height,
-          }),
-        })
-        if (resp.ok) {
-          const j = (await resp.json()) as any
-          bgDataUrl = j?.dataUrl
-        }
-      } catch {
-        bgDataUrl = undefined
-      }
-    }
+    const background: BgKind = body.background === 'horde' ? 'horde' : 'plain'
+    const hordeTemplate = body.hordePromptTemplate
 
     const zip = new JSZip()
 
-    const wantPng = formats.includes('png')
-    const wantSvg = formats.includes('svg')
-    let Resvg: any = null
-    if (wantPng) {
-      const mod = await import('@resvg/resvg-js')
-      Resvg = mod.Resvg
-    }
+    const manifestLines: string[] = [
+      'carousel:',
+      `  count: ${count}`,
+      `  profiles[${profiles.length}]${profiles.length ? '{text}' : ''}:`,
+      ...profiles.map((p) => `    ${p}`),
+      `  formats[${formats.length}]${formats.length ? '{text}' : ''}:`,
+      ...formats.map((f) => `    ${f}`),
+      `  background: ${background}`,
+    ]
 
     for (let i = 0; i < slides.length; i++) {
-      for (const s of sizes) {
-        const svg = buildSlideSVG(slides[i]!, i, {
-          width: s.width,
-          height: s.height,
-          background,
-          bgDataUrl,
-        })
-        const base = `slide_${String(i + 1).padStart(2, '0')}_${s.key}`
-        if (wantSvg) zip.file(`${base}.svg`, svg)
+      const txt = slides[i]
 
-        if (wantPng && Resvg) {
-          const r = new Resvg(svg, {
-            fitTo: { mode: 'width', value: s.width },
-            background: 'transparent',
+      for (const profile of profiles) {
+        const dims = PROFILES[profile]
+        const width = body.width && body.width > 0 ? Math.floor(body.width) : dims.width
+        const height = body.height && body.height > 0 ? Math.floor(body.height) : dims.height
+
+        let bgDataUrl: string | undefined
+        if (background === 'horde') {
+          const perBgGuard = await guardOr429(req, {
+            endpoint: 'carousel_bg',
+            bucket: profile,
+            maxHits: 15,
+            windowSec: 60,
           })
-          const pngU8: Uint8Array = r.render().asPng()
-          const ab = toArrayBuffer(pngU8)
-          zip.file(`${base}.png`, ab)
+          if (perBgGuard) {
+            bgDataUrl = undefined
+          } else {
+            bgDataUrl = await tryHordeBg(txt, width, height, hordeTemplate)
+          }
+        }
+
+        const svg = buildSlideSVG(txt, i, { width, height, background, bgDataUrl })
+        const nameSvg = `slide_${String(i + 1).padStart(2, '0')}_${profile}.svg`
+        zip.file(nameSvg, svg)
+
+        if (formats.includes('png')) {
+          const perPngGuard = await guardOr429(req, {
+            endpoint: 'carousel_png',
+            bucket: profile,
+            maxHits: 60,
+            windowSec: 60,
+          })
+          if (!perPngGuard) {
+            const pngU8 = await svgToPng(svg, width, height)
+            const namePng = `slide_${String(i + 1).padStart(2, '0')}_${profile}.png`
+            zip.file(namePng, pngU8)
+          }
+        }
+
+        if (!formats.includes('svg')) {
+          zip.remove(nameSvg)
         }
       }
     }
+
+    zip.file('manifest.toon', manifestLines.join('\n'))
 
     const zipU8 = await zip.generateAsync({
       type: 'uint8array',
@@ -259,7 +323,6 @@ export async function POST(req: NextRequest) {
     })
 
     const ab = toArrayBuffer(zipU8)
-
     return new NextResponse(ab, {
       status: 200,
       headers: {

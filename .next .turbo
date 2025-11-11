@@ -1,0 +1,60 @@
+* [33m3495a36[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix(api): rename horde route.ts
+* [33mb490459[m chore: fix windows node_modules after WSL install; restore dev
+* [33mbd08ea5[m feat(image): cover PNG via resvg + auth middleware lint fix
+* [33mdb49f50[m fix(api): inline supabase admin client; fix headers; fix thanks page
+* [33m398e040[m chore(ci): update lockfile for eslint-formatter-codeframe
+* [33m18248ad[m chore(git): ignore zips and reports
+* [33md1c21af[m chore(dev): add cross-platform problems:all reports
+* [33m73a8e02[m feat(site): /docs, /pricing e lead capture via Service Role
+* [33mbf49b94[m chore: add jszip runtime dependency
+* [33m4fcf748[m fix(carousel): return ArrayBuffer in Response + real ZIP
+* [33mbc5d7c1[m feat(core): MVP pronto — demo pubblica, generate/copy via Groq, jobs+SSE, referral, RLS owner-only, homepage UI, lint/husky/prettier
+* [33me52e6d9[m chore(repo): enforce LF via .gitattributes + ensure .env.local ignore
+* [33mc1ac154[m fix: rimosso api key hardcoded e corretto middleware
+* [33m4b8dbc2[m fix: correct generateAPIKey function to return proper object with apiKey and hashedKey properties
+* [33mbf006fe[m feat: add week 2 endpoints with mock implementations
+* [33m74300c6[m chore: update environment variables and complete week 1 setup
+* [33mf6c2ff0[m fix: TypeScript errors for Next.js 16 compatibility
+* [33m8652a40[m fix: update SSE route for Next.js 16 async params
+* [33m4ed7406[m identify: add project marker to identify correct Vercel project
+* [33ma6a78d8[m identify: add project marker to identify correct Vercel project
+* [33ma7031c2[m feat: Week1 - cache light and referral system implementation
+* [33mc8b4145[m feat: Week1 - SSE Progress implementation for jobs
+* [33md54f331[m fix: correct users array access in auth middleware
+* [33mbb2f131[m fix: complete TypeScript type resolution for auth system
+* [33mfc6935c[m fix: TypeScript error in auth route - add user existence check
+* [33m89c03bc[m feat: Week1 - rate limit implementation
+* [33m4a48e4b[m feat: Week1 - auth base implementation (crypto, middleware, API keys route)
+* [33m441ecb5[m docs: add PROJECT_STATE.md with Day 0 completion status
+* [33mb280701[m feat: Day0 complete - health route, dependencies, env setup
+* [33mdb2b721[m Initial commit from Create Next App
+* [33m3495a36[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix(api): rename horde route.ts
+* [33mb490459[m chore: fix windows node_modules after WSL install; restore dev
+* [33mbd08ea5[m feat(image): cover PNG via resvg + auth middleware lint fix
+* [33mdb49f50[m fix(api): inline supabase admin client; fix headers; fix thanks page
+* [33m398e040[m chore(ci): update lockfile for eslint-formatter-codeframe
+* [33m18248ad[m chore(git): ignore zips and reports
+* [33md1c21af[m chore(dev): add cross-platform problems:all reports
+* [33m73a8e02[m feat(site): /docs, /pricing e lead capture via Service Role
+* [33mbf49b94[m chore: add jszip runtime dependency
+* [33m4fcf748[m fix(carousel): return ArrayBuffer in Response + real ZIP
+* [33mbc5d7c1[m feat(core): MVP pronto — demo pubblica, generate/copy via Groq, jobs+SSE, referral, RLS owner-only, homepage UI, lint/husky/prettier
+* [33me52e6d9[m chore(repo): enforce LF via .gitattributes + ensure .env.local ignore
+* [33mc1ac154[m fix: rimosso api key hardcoded e corretto middleware
+* [33m4b8dbc2[m fix: correct generateAPIKey function to return proper object with apiKey and hashedKey properties
+* [33mbf006fe[m feat: add week 2 endpoints with mock implementations
+* [33m74300c6[m chore: update environment variables and complete week 1 setup
+* [33mf6c2ff0[m fix: TypeScript errors for Next.js 16 compatibility
+* [33m8652a40[m fix: update SSE route for Next.js 16 async params
+* [33m4ed7406[m identify: add project marker to identify correct Vercel project
+* [33ma6a78d8[m identify: add project marker to identify correct Vercel project
+* [33ma7031c2[m feat: Week1 - cache light and referral system implementation
+* [33mc8b4145[m feat: Week1 - SSE Progress implementation for jobs
+* [33md54f331[m fix: correct users array access in auth middleware
+* [33mbb2f131[m fix: complete TypeScript type resolution for auth system
+* [33mfc6935c[m fix: TypeScript error in auth route - add user existence check
+* [33m89c03bc[m feat: Week1 - rate limit implementation
+* [33m4a48e4b[m feat: Week1 - auth base implementation (crypto, middleware, API keys route)
+* [33m441ecb5[m docs: add PROJECT_STATE.md with Day 0 completion status
+* [33mb280701[m feat: Day0 complete - health route, dependencies, env setup
+* [33mdb2b721[m Initial commit from Create Next App

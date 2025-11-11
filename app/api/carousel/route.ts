@@ -2,6 +2,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import JSZip from 'jszip'
+import { isRateLimited, clientUUID } from '@/lib/rate-limit/rate-limit'
 
 export const runtime = 'nodejs'
 
@@ -14,11 +15,24 @@ type Body = {
   background?: BgKind
   /** se usi la tua /api/image/horde puoi passare un prompt template qui (opzionale) */
   hordePromptTemplate?: string
+  /** nuovi: formati e profili di export */
+  formats?: Array<'svg' | 'png'>
+  profiles?: Array<'square' | 'portrait' | 'story'>
 }
 
 const DEFAULT_W = 1080
 const DEFAULT_H = 1350
 const DEFAULT_COUNT = 5
+
+const PROFILE_SIZES = {
+  square: { width: 1080, height: 1080 },
+  portrait: { width: 1080, height: 1350 }, // 4:5
+  story: { width: 1080, height: 1920 }, // 9:16
+} as const
+type Profile = keyof typeof PROFILE_SIZES
+function isProfile(x: unknown): x is Profile {
+  return x === 'square' || x === 'portrait' || x === 'story'
+}
 
 /** Converte un Uint8Array in un ArrayBuffer “pulito” (garantito, non SharedArrayBuffer). */
 function toArrayBuffer(u8: Uint8Array): ArrayBuffer {
@@ -47,8 +61,8 @@ function pickFontSize(text: string): number {
   return 72
 }
 
-/** Avvolge le parole su righe da N parole circa (grezzo ma efficace per titoli). */
-function wrapWords(text: string, maxWordsPerLine: number): string[] {
+/** Wrap con limite di righe e ellissi sull’ultima riga. */
+function wrapWords(text: string, maxWordsPerLine: number, maxLines = 5): string[] {
   const words = text.trim().split(/\s+/)
   const lines: string[] = []
   let buf: string[] = []
@@ -56,10 +70,15 @@ function wrapWords(text: string, maxWordsPerLine: number): string[] {
     if (buf.length >= maxWordsPerLine) {
       lines.push(buf.join(' '))
       buf = []
+      if (lines.length >= maxLines) break
     }
     buf.push(w)
   }
-  if (buf.length) lines.push(buf.join(' '))
+  if (lines.length < maxLines && buf.length) lines.push(buf.join(' '))
+  const totalCapacity = maxWordsPerLine * maxLines
+  if (words.length > totalCapacity || (lines.length === maxLines && buf.length)) {
+    lines[maxLines - 1] = lines[maxLines - 1].replace(/…?$/, '') + '…'
+  }
   return lines
 }
 
@@ -85,7 +104,7 @@ function buildSlideSVG(
 
   const fs = pickFontSize(text)
   const wordsPerLine = fs >= 72 ? 6 : fs >= 64 ? 7 : fs >= 56 ? 8 : fs >= 48 ? 9 : 10
-  const lines = wrapWords(text, wordsPerLine)
+  const lines = wrapWords(text, wordsPerLine, 5)
 
   const titleYStart = pad + 120
   const lineH = Math.round(fs * 1.15)
@@ -149,13 +168,18 @@ function ensureCount(items: string[], n: number): string[] {
 
 export async function POST(req: NextRequest) {
   try {
+    // --- Rate limit guard ---
+    const userId = clientUUID(req)
+    const limited = await isRateLimited(userId, 'carousel')
+    if (limited) {
+      return NextResponse.json({ ok: false, error: 'rate_limited' }, { status: 429 })
+    }
+
     const body = (await req.json()) as Body
 
     const count = Number.isFinite(body.count)
       ? Math.max(1, Math.min(10, body.count!))
       : DEFAULT_COUNT
-    const width = Number.isFinite(body.width) ? Math.max(320, body.width!) : DEFAULT_W
-    const height = Number.isFinite(body.height) ? Math.max(320, body.height!) : DEFAULT_H
     const background: BgKind = body.background === 'horde' ? 'horde' : 'plain'
 
     const baseSlides =
@@ -164,17 +188,69 @@ export async function POST(req: NextRequest) {
         : ['Hook 1', 'Hook 2', 'Hook 3']
     const slides = ensureCount(baseSlides, count)
 
-    // (Opzionale) qui potresti chiamare la tua /api/image/horde per ottenere dataURL background.
-    // Per robustezza restiamo in "plain". Se vuoi attivare, decommenta e gestisci il ritorno.
-    const bgDataUrl: string | undefined = undefined
+    // Formati e profili (con narrowing forte)
+    const rawProfiles = Array.isArray(body.profiles) ? body.profiles.filter(isProfile) : []
+    const profiles: Profile[] = rawProfiles.length ? rawProfiles : ['portrait']
+    const formats = Array.isArray(body.formats) && body.formats.length ? body.formats : ['svg']
+
+    const sizes = profiles.map((p) => ({ key: p, ...PROFILE_SIZES[p] }))
+
+    // (Opzionale) background "horde": chiama un tuo endpoint che restituisce un dataURL
+    let bgDataUrl: string | undefined = undefined
+    if (background === 'horde' && body.hordePromptTemplate) {
+      try {
+        const base = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://ace-six-gules.vercel.app'
+        const first = sizes[0]!
+        const resp = await fetch(`${base}/api/image/horde`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            promptTemplate: body.hordePromptTemplate,
+            width: first.width,
+            height: first.height,
+          }),
+        })
+        if (resp.ok) {
+          const j = (await resp.json()) as any
+          bgDataUrl = j?.dataUrl
+        }
+      } catch {
+        bgDataUrl = undefined
+      }
+    }
 
     const zip = new JSZip()
 
-    slides.forEach((text, i) => {
-      const svg = buildSlideSVG(text, i, { width, height, background, bgDataUrl })
-      const name = `slide_${String(i + 1).padStart(2, '0')}.svg`
-      zip.file(name, svg)
-    })
+    const wantPng = formats.includes('png')
+    const wantSvg = formats.includes('svg')
+    let Resvg: any = null
+    if (wantPng) {
+      const mod = await import('@resvg/resvg-js')
+      Resvg = mod.Resvg
+    }
+
+    for (let i = 0; i < slides.length; i++) {
+      for (const s of sizes) {
+        const svg = buildSlideSVG(slides[i]!, i, {
+          width: s.width,
+          height: s.height,
+          background,
+          bgDataUrl,
+        })
+        const base = `slide_${String(i + 1).padStart(2, '0')}_${s.key}`
+        if (wantSvg) zip.file(`${base}.svg`, svg)
+
+        if (wantPng && Resvg) {
+          const r = new Resvg(svg, {
+            fitTo: { mode: 'width', value: s.width },
+            background: 'transparent',
+          })
+          const pngU8: Uint8Array = r.render().asPng()
+          const ab = toArrayBuffer(pngU8)
+          zip.file(`${base}.png`, ab)
+        }
+      }
+    }
 
     const zipU8 = await zip.generateAsync({
       type: 'uint8array',

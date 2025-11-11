@@ -1,6 +1,7 @@
 // app/api/generate/copy/route.ts
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
+import { isRateLimited, clientUUID } from '@/lib/rate-limit/rate-limit'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,10 +19,19 @@ const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions'
 const API_KEY = process.env.GROQ_API_KEY || ''
 
 export async function POST(req: NextRequest) {
+  const t0 = Date.now()
   try {
     if (!API_KEY) {
       return NextResponse.json({ ok: false, error: 'missing_groq_api_key' }, { status: 500 })
     }
+
+    // --- Rate limit guard ---
+    const userId = clientUUID(req)
+    const limited = await isRateLimited(userId, 'generate_copy')
+    if (limited) {
+      return NextResponse.json({ ok: false, error: 'rate_limited' }, { status: 429 })
+    }
+
     const b = (await req.json()) as Body
     const brief = (b.brief || '').trim()
     const lang: Lang = b.lang === 'en' ? 'en' : 'it'
@@ -67,12 +77,14 @@ export async function POST(req: NextRequest) {
     const hooks = postProcessHooks(parsed.hooks ?? [], lang, nHooks)
     const captions = postProcessCaptions(parsed.captions ?? [], lang, nCaptions)
 
+    const latency_ms = Date.now() - t0
     return NextResponse.json(
       {
         ok: true,
         brief,
         lang,
         model: MODEL,
+        latency_ms,
         result: { hooks, captions },
       },
       { status: 200 }
@@ -144,7 +156,7 @@ const FEWSHOTS: Record<Lang, string> = {
     negative_example: {
       hooks: ['Scopri il segreto definitivo!!!', 'Trasforma la tua vita per sempre'],
       captions: [
-        'Il prodotto migliore di sempre, risultati miracolosi in 3 giorni!!!',
+        'Il prodotto migliore di sempre—risultati miracolosi in 3 giorni!!!',
         'Sblocca la pelle perfetta in un attimo!',
       ],
     },
@@ -169,41 +181,38 @@ const FEWSHOTS: Record<Lang, string> = {
 
 // ---------- Post-processing & rerank ----------
 
-function postProcessHooks(hooks: string[], lang: Lang, target: number) {
+function postProcessHooks(hooks: string[], _lang: Lang, target: number) {
   const cleaned = hooks
-    .map((h) => normalizeLine(h, lang))
+    .map((h) => normalizeLine(h, _lang))
     .filter(Boolean)
-    .filter((h) => !containsBanned(h!, BANLIST[lang]))
+    .filter((h) => !containsBanned(h!, BANLIST[_lang]))
   const deduped = dedupeCaseInsensitive(cleaned as string[])
-  const reranked = rerankHooks(deduped, lang)
-  return padIfShort(reranked, lang, target)
+  const reranked = rerankHooks(deduped)
+  return padIfShort(reranked, _lang, target)
 }
 
-function postProcessCaptions(caps: string[], lang: Lang, target: number) {
+function postProcessCaptions(caps: string[], _lang: Lang, target: number) {
   const cleaned = caps
-    .map((c) => normalizeSentence(c, lang))
+    .map((c) => normalizeSentence(c, _lang))
     .filter(Boolean)
-    .filter((c) => !containsBanned(c!, BANLIST[lang]))
+    .filter((c) => !containsBanned(c!, BANLIST[_lang]))
   const deduped = dedupeCaseInsensitive(cleaned as string[])
   const reranked = rerankCaptions(deduped)
-  return padIfShort(reranked, lang, target, true)
+  return padIfShort(reranked, _lang, target, true)
 }
 
-function normalizeLine(s: string, lang: Lang) {
+function normalizeLine(s: string, _lang: Lang) {
   let t = s.trim()
   if (!t) return ''
-  // 1) rimuovi punteggiatura urlata
   t = t.replace(/[!?.]{2,}$/u, '!').replace(/\s{2,}/g, ' ')
-  // 2) capitalizza prima lettera, niente tutto maiuscolo
   t = t[0].toUpperCase() + t.slice(1)
   if (/^[A-Z\s]+$/.test(t)) t = toTitleCase(t.toLowerCase())
-  // 3) small truncation
   const words = t.split(/\s+/)
   if (words.length > 10) t = words.slice(0, 10).join(' ')
   return t
 }
 
-function normalizeSentence(s: string, lang: Lang) {
+function normalizeSentence(s: string, _lang: Lang) {
   let t = s.trim()
   if (!t) return ''
   t = t.replace(/\s{2,}/g, ' ')
@@ -231,45 +240,31 @@ function dedupeCaseInsensitive(arr: string[]) {
   return out
 }
 
-function rerankHooks(list: string[], lang: Lang) {
-  return [...list].sort((a, b) => scoreHook(b, lang) - scoreHook(a, lang))
+// --- Rerank “no urla”, anti-duplicati, lunghezza ideale ~42 char ---
+function scoreLine(s: string) {
+  const t = s.trim()
+  const len = t.length
+  const upperRatio = t.replace(/[^A-Z]/g, '').length / Math.max(1, len)
+  const excl = (t.match(/!/g) || []).length
+  const dupSeq = /(.)\1{2,}/.test(t) ? 1 : 0
+  const endPunctPenalty = /[!?.,:;]$/.test(t) ? 0.1 : 0
+  const lenIdeal = Math.max(0, 1 - Math.abs(len - 42) / 42)
+  return lenIdeal - upperRatio - 0.2 * excl - 0.5 * dupSeq - endPunctPenalty
 }
 
+function rerankHooks(list: string[]) {
+  return [...list].sort((a, b) => scoreLine(b) - scoreLine(a))
+}
 function rerankCaptions(list: string[]) {
-  return [...list].sort((a, b) => scoreCaption(b) - scoreCaption(a))
+  return [...list].sort((a, b) => scoreLine(b) - scoreLine(a))
 }
 
-function scoreHook(s: string, lang: Lang) {
-  const words = s.trim().split(/\s+/).length
-  const ideal = 6 // sweet spot
-  const lenScore = 1 - Math.min(1, Math.abs(words - ideal) / ideal)
-  const power =
-    /(\bskin|\bpelle|\bclean|\broutine|\bradiant|\bglow|\bresults|\bresultati|\bessenziale)/i.test(
-      s
-    )
-      ? 0.3
-      : 0
-  const noPunct = /[!?]$/.test(s) ? 0 : 0.1
-  return lenScore + power + noPunct
-}
-
-function scoreCaption(s: string) {
-  const len = s.length
-  const ideal = 120
-  const lenScore = 1 - Math.min(1, Math.abs(len - ideal) / ideal)
-  const hasBenefit =
-    /\b(benefit|results|efficacy|routine|ingredient|formula|pelle|risultati|efficacia)\b/i.test(s)
-      ? 0.2
-      : 0
-  return lenScore + hasBenefit
-}
-
-function padIfShort(list: string[], lang: Lang, target: number, sentence = false) {
+function padIfShort(list: string[], _lang: Lang, target: number, sentence = false) {
   const out = [...list]
-  while (out.length < target) {
+  while (out.length < target && list.length > 0) {
     const base = (list[out.length % list.length] ?? 'More value, less noise').trim()
     const v = sentence ? base + ' ' : base + ' •'
-    out.push(normalizeLine(v, lang))
+    out.push(normalizeLine(v, _lang))
   }
   return out.slice(0, target)
 }

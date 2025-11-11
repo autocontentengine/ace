@@ -1,26 +1,33 @@
+// lib/rate-limit/rate-limit.ts
 import { supabaseServer } from '@/lib/supabase'
 
 const supabase = supabaseServer()
 
 /**
- * true => rate-limited (429)
- * false => ok
+ * Ritorna TRUE se l’utente è rate-limited per l'endpoint indicato.
+ * La funzione Postgres `check_rate_limit(uuid, text)` deve restituire boolean.
  */
 export async function isRateLimited(userId: string | null, endpoint = 'default'): Promise<boolean> {
-  const safeUserId =
-    userId && /[0-9a-f-]{8}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{4}-[0-9a-f-]{12}/i.test(userId)
-      ? userId
-      : '00000000-0000-0000-0000-000000000000'
-
-  const { data, error } = await supabase.rpc('check_rate_limit', {
-    input_user_id: safeUserId,
-    input_endpoint: endpoint,
-  })
-
-  if (error) {
-    // fail-open: non bloccare il traffico in caso di errore RPC
-    console.error('Rate limit RPC error:', error)
+  try {
+    if (!userId) return false
+    const { data, error } = await supabase.rpc('check_rate_limit', {
+      input_user_id: userId,
+      input_endpoint: endpoint,
+    })
+    if (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[rate-limit] RPC error', error)
+      }
+      return false
+    }
+    return Boolean(data)
+  } catch (e) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('[rate-limit] error', e)
+    }
     return false
   }
-  return data === true
 }
+
+// Re-export del clientUUID dal file util.ts (senza estensione)
+export { clientUUID } from './util'

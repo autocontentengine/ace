@@ -1,3 +1,4 @@
+import { rateKey } from '@/lib/rate-limit/key'
 // app/api/carousel/route.ts
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
@@ -230,7 +231,7 @@ async function readBody(req: NextRequest): Promise<Body> {
 
 // ---------- Handler ----------
 export async function POST(req: NextRequest) {
-  const guard = await guardOr429(req, { endpoint: 'carousel', maxHits: 60, windowSec: 60 })
+  const guard = await guardOr429(rateKey(req), 'carousel', { maxHits: 60, windowSec: 60 })
   if (guard) return guard
 
   try {
@@ -277,8 +278,7 @@ export async function POST(req: NextRequest) {
 
         let bgDataUrl: string | undefined
         if (background === 'horde') {
-          const perBgGuard = await guardOr429(req, {
-            endpoint: 'carousel_bg',
+          const perBgGuard = await guardOr429(rateKey(req), 'carousel_png', {
             bucket: profile,
             maxHits: 15,
             windowSec: 60,
@@ -295,8 +295,7 @@ export async function POST(req: NextRequest) {
         zip.file(nameSvg, svg)
 
         if (formats.includes('png')) {
-          const perPngGuard = await guardOr429(req, {
-            endpoint: 'carousel_png',
+          const perPngGuard = await guardOr429(rateKey(req), 'carousel_png', {
             bucket: profile,
             maxHits: 60,
             windowSec: 60,

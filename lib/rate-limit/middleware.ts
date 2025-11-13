@@ -1,17 +1,21 @@
 // lib/rate-limit/middleware.ts
-import type { NextRequest } from 'next/server'
-import { NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { guardOr429 } from './rate-limit'
+import { rateKey } from './key'
 
 /**
- * Middleware helper:
- *  - Ritorna 429 se rate-limited
- *  - Ritorna null se OK
+ * Ritorna:
+ *  - NextResponse 429 se rate-limited
+ *  - null se ok
  */
 export async function enforceRateLimit(
   req: NextRequest,
   endpoint = 'default',
-  maxHits = 60
-): Promise<NextResponse | null> {
-  return guardOr429(req, { endpoint, maxHits })
+  maxHits = 60,
+  windowSec = 60
+) {
+  const key = rateKey(req)
+  // NB: guardOr429(key, endpoint, { maxHits, windowSec })
+  const guard = await guardOr429(key, endpoint, { maxHits, windowSec })
+  return guard ?? null
 }
